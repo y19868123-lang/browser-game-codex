@@ -17,7 +17,7 @@ export interface SkillDefinition { id: string; name: string; description: string
 export interface JobDefinition { id: string; name: string; category: JobCategory; description: string; statGrowth: Partial<Stats>; skillIds: string[]; weaponKinds: ItemKind[]; changeRequirement: { level: number; gold: number } }
 export interface TownDefinition { id: string; name: string; description: string; travelCost: number; services: ServiceType[]; dungeonIds: string[]; marketMultiplier: number }
 export interface StoreDefinition { id: string; townId: string; name: string; service: "weaponShop" | "toolShop" | "blacksmith"; stock: Array<{ itemId: string; quantity: number; price: number }> }
-export interface DungeonRoom { id: string; x: number; y: number; type: "entrance" | "battle" | "treasure" | "rest" | "boss"; enemyId?: string; lootIds?: string[]; links: string[] }
+export interface DungeonRoom { id: string; name: string; x: number; y: number; type: "entrance" | "battle" | "treasure" | "rest" | "boss"; enemyId?: string; lootIds?: string[]; links: string[] }
 export interface DungeonDefinition { id: string; name: string; townId: string; description: string; actionCost: number; rooms: DungeonRoom[] }
 export interface DungeonProgress { dungeonId: string; currentRoomId: string; visitedRoomIds: string[]; clearedRoomIds: string[]; completed: boolean }
 export interface NpcDefinition { id: string; name: string; jobId: string; homeTownId: string; goal: "gather" | "trade" | "train" | "craft"; riskTolerance: number; startingGold: number; personality: string }

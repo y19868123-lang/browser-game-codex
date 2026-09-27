@@ -28,6 +28,7 @@ export const moveDungeonRoom = (state: GameState, roomId: string): GameState => 
   const current = dungeon.rooms.find((room) => room.id === state.dungeon?.currentRoomId);
   const room = dungeon.rooms.find((candidate) => candidate.id === roomId);
   if (!current || !room || !current.links.includes(roomId)) return log(state, "そこへ続く道はありません。", "danger");
+  if ((current.type === "battle" || current.type === "boss") && !state.dungeon.clearedRoomIds.includes(current.id)) return log(state, "立ちはだかる敵を退けるまで先へは進めません。", "danger");
   const visitedRoomIds = [...new Set([...state.dungeon.visitedRoomIds, room.id])];
   const firstVisit = !state.dungeon.visitedRoomIds.includes(room.id);
   const progress = { ...state.dungeon, currentRoomId: room.id, visitedRoomIds };

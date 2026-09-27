@@ -8,7 +8,7 @@ import type { EnemyDefinition, GameState, InventoryItem, ItemKind, LogEntry, Sta
 
 const log = (state: GameState, text: string, tone: LogEntry["tone"] = "normal"): GameState => ({ ...state, log: [{ text, tone }, ...state.log].slice(0, 8) });
 const equippedBonus = (state: GameState, key: StatKey) => Object.values(state.equipment).reduce((total, item) => total + (item ? (items[item.id].modifiers?.[key] ?? 0) : 0), 0);
-const attack = (state: GameState) => state.stats.str + (items[state.equipment.weapon?.id ?? "bamboo_sword"]?.attack ?? 0) + Math.floor(state.stats.dex / 3);
+const attack = (state: GameState) => state.stats.str + weaponPower(state) + Math.floor(state.stats.dex / 3);
 const defense = (state: GameState) => state.stats.vit + (items[state.equipment.armor?.id ?? ""]?.defense ?? 0);
 const addItem = (inventory: InventoryItem[], item: InventoryItem): InventoryItem[] => {
   const found = inventory.find((entry) => entry.id === item.id && entry.enhancement === item.enhancement);
@@ -29,7 +29,11 @@ export const explore = (state: GameState, random = Math.random): GameState => {
 export const battleAction = (state: GameState, action: "attack" | "guard" | "flee", random = Math.random): GameState => {
   if (!state.battle) return state;
   const { enemy } = state.battle;
-  if (action === "flee") return random() < 0.55 + state.stats.dex * 0.025 ? log({ ...state, battle: undefined }, "危険を避け、戦いから離れた。") : log({ ...state, battle: { ...state.battle, message: "逃走に失敗した！" } }, "逃走に失敗した。", "danger");
+  if (action === "flee") {
+    if (random() >= 0.55 + state.stats.dex * 0.025) return log({ ...state, battle: { ...state.battle, message: "逃走に失敗した！" } }, "逃走に失敗した。", "danger");
+    const dungeon = retreatFromDungeonBattle(state);
+    return log({ ...state, dungeon, battle: undefined }, dungeon ? "危険を避け、入口まで退いた。" : "危険を避け、戦いから離れた。");
+  }
   const critical = action === "attack" && random() < 0.05 + (state.stats.luk + equippedBonus(state, "luk")) * 0.012;
   const evaded = action === "attack" && enemy.trait === "evasive" && random() < 0.2;
   const damage = evaded || action === "guard" ? 0 : Math.max(1, attack(state) + Math.floor(random() * 5) - enemy.defense) * (critical ? 2 : 1);
@@ -37,10 +41,18 @@ export const battleAction = (state: GameState, action: "attack" | "guard" | "fle
   if (remaining <= 0) return victory(state, enemy, random, critical ? `会心の一撃！ ${enemy.name}を倒した。` : `${enemy.name}を倒した。`);
   const incoming = Math.max(1, enemy.attack + Math.floor(random() * 4) + (enemy.trait === "frenzied" ? 2 : 0) - defense(state) - (action === "guard" ? 4 : 0));
   const hp = Math.max(0, state.hp - incoming);
-  if (hp === 0) return log({ ...state, hp: Math.ceil(state.maxHp * 0.45), gold: Math.max(0, state.gold - 8), battle: undefined }, "倒れて宿場へ運ばれた。8文を落とした。", "danger");
+  if (hp === 0) return defeat(state);
   const hitText = action === "guard" ? `身を守り、${incoming}の傷を受けた。` : evaded ? `${enemy.name}は身を翻し、攻撃をかわした。` : `${critical ? "会心の" : ""}${damage}の傷を与え、${incoming}の傷を受けた。`;
   return log({ ...state, hp, battle: { ...state.battle, enemyHp: remaining, turn: state.battle.turn + 1, message: hitText } }, hitText, critical ? "good" : "normal");
 };
+const retreatFromDungeonBattle = (state: GameState) => {
+  const roomId = state.battle?.roomId;
+  if (!state.dungeon || !roomId) return state.dungeon;
+  const entrance = dungeons[state.dungeon.dungeonId]?.rooms.find((room) => room.type === "entrance");
+  if (!entrance) return state.dungeon;
+  return { ...state.dungeon, currentRoomId: entrance.id, visitedRoomIds: state.dungeon.visitedRoomIds.filter((id) => id !== roomId) };
+};
+const defeat = (state: GameState): GameState => log({ ...state, hp: Math.ceil(state.maxHp * 0.45), gold: Math.max(0, state.gold - 8), dungeon: retreatFromDungeonBattle(state), battle: undefined }, state.dungeon ? "倒れ、入口まで運ばれた。8文を落とした。" : "倒れて宿場へ運ばれた。8文を落とした。", "danger");
 export const useSkill = (state: GameState, skillId: string, random = Math.random): GameState => {
   const skill = skills[skillId];
   if (!state.battle || !skill || !state.learnedSkillIds.includes(skillId)) return log(state, "その技は今は使えません。", "danger");
@@ -57,7 +69,8 @@ export const useSkill = (state: GameState, skillId: string, random = Math.random
   const remaining = battle.enemyHp - damage;
   if (remaining <= 0) return victory(paid, enemy, random, `${skill.name}で${enemy.name}を倒した。`);
   const incoming = Math.max(1, enemy.attack + Math.floor(random() * 4) - defense(paid));
-  return log({ ...paid, hp: Math.max(1, paid.hp - incoming), battle: { ...battle, enemyHp: remaining, turn: battle.turn + 1, message: `${skill.name}！ ${damage}の傷を与えた。` } }, `${skill.name}！ ${damage}の傷を与えた。`, critical ? "good" : "normal");
+  if (paid.hp <= incoming) return defeat(paid);
+  return log({ ...paid, hp: paid.hp - incoming, battle: { ...battle, enemyHp: remaining, turn: battle.turn + 1, message: `${skill.name}！ ${damage}の傷を与えた。` } }, `${skill.name}！ ${damage}の傷を与えた。`, critical ? "good" : "normal");
 };
 const victory = (state: GameState, enemy: EnemyDefinition, random: () => number, text: string): GameState => {
   const finishedBattle = state.battle;
@@ -68,12 +81,13 @@ const victory = (state: GameState, enemy: EnemyDefinition, random: () => number,
   const roomId = finishedBattle?.roomId;
   const dungeonId = finishedBattle?.dungeonId;
   const room = dungeonId && roomId ? dungeons[dungeonId]?.rooms.find((candidate) => candidate.id === roomId) : undefined;
-  if (room?.type === "boss" && next.dungeon) { next = { ...next, gold: next.gold + 40, dungeon: { ...next.dungeon, completed: true, clearedRoomIds: [...new Set([...next.dungeon.clearedRoomIds, room.id])]}, inventory: addItem(next.inventory, { id: "lucky_charm", quantity: 1 }) }; text += " 深層を制し、結びの根付と40文を得た！"; }
+  if (room && next.dungeon) next = { ...next, dungeon: { ...next.dungeon, clearedRoomIds: [...new Set([...next.dungeon.clearedRoomIds, room.id])] } };
+  if (room?.type === "boss" && next.dungeon) { next = { ...next, gold: next.gold + 40, dungeon: { ...next.dungeon, completed: true }, inventory: addItem(next.inventory, { id: "lucky_charm", quantity: 1 }) }; text += " 深層を制し、結びの根付と40文を得た！"; }
   return log(next, `${text} ${enemy.gold}文と${enemy.exp}経験を得た。${dropped.length ? ` ${dropped.map((drop) => items[drop.itemId].name).join("、")}を手に入れた。` : ""}`, "good");
 };
 export const equip = (state: GameState, itemId: string): GameState => { const definition = items[itemId]; if (!definition || definition.kind === "material") return state; const slot = definition.kind as Exclude<ItemKind, "material">; return log({ ...state, equipment: { ...state.equipment, [slot]: { id: itemId, quantity: 1, enhancement: state.inventory.find((entry) => entry.id === itemId)?.enhancement } } }, `「${definition.name}」を装備した。`, "good"); };
 export const enhanceWeapon = (state: GameState): GameState => { const weapon = state.equipment.weapon; if (!weapon) return log(state, "強化する武器がありません。", "danger"); const ore = state.inventory.find((entry) => entry.id === "iron_ore")?.quantity ?? 0; const cost = 12 + (weapon.enhancement ?? 0) * 10; if (ore < 2 || state.gold < cost) return log(state, `強化には鉄鉱石2個と${cost}文が必要です。`, "danger"); const enhancement = (weapon.enhancement ?? 0) + 1; return log({ ...state, gold: state.gold - cost, inventory: takeItem(state.inventory, "iron_ore", 2), equipment: { ...state.equipment, weapon: { ...weapon, enhancement } } }, `鍛冶場で「${items[weapon.id].name}」を +${enhancement} に強化した。`, "good"); };
-export const rest = (state: GameState): GameState => log({ ...state, hp: state.maxHp, mp: state.maxMp, actionPoints: state.maxActionPoints }, "宿で英気を養った。HP・MP・行動力が回復した。", "good");
+export const rest = (state: GameState): GameState => state.battle || state.dungeon ? log(state, "宿へ戻ってから休みましょう。", "danger") : log({ ...state, hp: state.maxHp, mp: state.maxMp, actionPoints: state.maxActionPoints }, "宿で英気を養った。HP・MP・行動力が回復した。", "good");
 export const weaponPower = (state: GameState) => (state.equipment.weapon ? (items[state.equipment.weapon.id].attack ?? 0) + (state.equipment.weapon.enhancement ?? 0) * 2 : 0);
 export const changeJob = (state: GameState, jobId: string): GameState => {
   const job = jobs[jobId];
