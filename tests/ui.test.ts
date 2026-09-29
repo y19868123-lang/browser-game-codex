@@ -48,6 +48,9 @@ describe("player-facing UI", () => {
     expect(html).toContain("夕霞の原での戦い");
     expect(html).not.toContain("data-direction=");
     expect(html).not.toContain("探索地図");
+    const townHtml = render(battle, "town");
+    expect(townHtml).toContain("戦いへ戻る");
+    expect(townHtml).not.toContain('data-action="leave-dungeon"');
   });
 
   it("shows the latest action beside the active operation", () => {

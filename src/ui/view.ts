@@ -113,7 +113,7 @@ const forgePanel = (state: GameState) => {
 };
 
 const townView = (state: GameState) => {
-  if (state.dungeon || state.battle) return `<div class="single-column"><section class="panel town-away"><p class="eyebrow">町・市場</p><h2>いまは町を離れている</h2><p>探索を終えて町へ戻ると、宿や店、鍛冶場を利用できる。</p>${state.dungeon ? `<button data-action="leave-dungeon">町へ戻る</button>` : `<button data-tab="journey">戦いへ戻る</button>`}</section>${recentEvent(state)}</div>`;
+  if (state.dungeon || state.battle) return `<div class="single-column"><section class="panel town-away"><p class="eyebrow">町・市場</p><h2>いまは町を離れている</h2><p>探索を終えて町へ戻ると、宿や店、鍛冶場を利用できる。</p>${state.battle ? `<button data-tab="journey">戦いへ戻る</button>` : `<button data-action="leave-dungeon">町へ戻る</button>`}</section>${recentEvent(state)}</div>`;
   const town = towns[state.locationTownId];
   const townStores = Object.values(stores).filter((store) => store.townId === state.locationTownId);
   const storesHtml = `<section class="panel"><p class="eyebrow">町の店</p><h2>売買</h2>${townStores.map((store) => `<div class="store"><b>${store.name}</b>${store.stock.map((stock) => `<div><span>${items[stock.itemId].name}　${stock.price}文</span><span class="store-actions"><button data-buy="${store.id}:${stock.itemId}">買う</button><button class="quiet" data-sell="${store.id}:${stock.itemId}">売る</button></span></div>`).join("")}</div>`).join("") || "<p>この町の店舗は準備中です。</p>"}</section>`;
