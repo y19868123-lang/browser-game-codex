@@ -83,7 +83,7 @@ async function run(width) {
     npc: JSON.parse(localStorage.getItem("ayakashi-no-kuni.npcs.v1"))
   }));
   assert(before.player?.battle, "battle should be saved");
-  assert(before.npc?.tick > 0, "NPC ticks should be saved");
+  assert(before.npc?.version === 1 && before.npc?.state?.tick > 0, "versioned NPC ticks should be saved");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.locator(".battle").waitFor();
   const after = await page.evaluate(() => ({
