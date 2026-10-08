@@ -77,7 +77,18 @@ const victory = (state: GameState, enemy: EnemyDefinition, random: () => number,
   let next = { ...state, battle: undefined, gold: state.gold + enemy.gold, exp: state.exp + enemy.exp, defeated: state.defeated + 1 };
   const dropped = enemy.drops.filter((drop) => random() < drop.chance);
   next = { ...next, inventory: dropped.reduce((inventory, drop) => addItem(inventory, { id: drop.itemId, quantity: 1 }), next.inventory) };
-  while (next.exp >= expToNext(next.level)) { next = { ...next, level: next.level + 1, exp: next.exp - expToNext(next.level), maxHp: next.maxHp + 6, hp: next.maxHp + 6, stats: { ...next.stats, str: next.stats.str + 1, vit: next.stats.vit + 1, luk: next.stats.luk + (next.level % 2 === 0 ? 1 : 0) } }; text += ` Lv.${next.level} へ到達！`; }
+  while (next.exp >= expToNext(next.level)) {
+    const growth = jobs[next.jobId].statGrowth;
+    const stats = { ...next.stats };
+    const raised: string[] = [];
+    for (const key of Object.keys(growth) as StatKey[]) {
+      const amount = growth[key] ?? 0;
+      stats[key] += amount;
+      if (amount !== 0) raised.push(`${key === "karma" ? "業" : key.toUpperCase()} ${amount > 0 ? "+" : ""}${amount}`);
+    }
+    next = { ...next, level: next.level + 1, exp: next.exp - expToNext(next.level), maxHp: next.maxHp + 6, hp: next.maxHp + 6, stats };
+    text += ` Lv.${next.level} へ到達！ ${raised.join("・")}、最大HP +6。`;
+  }
   const roomId = finishedBattle?.roomId;
   const dungeonId = finishedBattle?.dungeonId;
   const room = dungeonId && roomId ? dungeons[dungeonId]?.rooms.find((candidate) => candidate.id === roomId) : undefined;

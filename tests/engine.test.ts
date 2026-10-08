@@ -111,6 +111,11 @@ describe("basic game loop", () => {
     state = moveDungeonRoom(state, "boss");
     while (state.battle) state = useSkill(state, "steady_strike", () => 0.99);
     expect(state.dungeon?.completed).toBe(true);
+    expect(state.level).toBeGreaterThan(1);
+    expect(state.stats.str).toBe(initialState().stats.str + state.level - 1);
+    expect(state.stats.vit).toBe(initialState().stats.vit + state.level - 1);
+    expect(state.stats.luk).toBe(initialState().stats.luk);
+    expect(state.maxHp).toBe(initialState().maxHp + (state.level - 1) * 6);
     expect(state.inventory.some((item) => item.id === "lucky_charm")).toBe(true);
     expect(state.log[0].text).toContain("深層を制し");
     state = leaveDungeon(state);
