@@ -21,7 +21,13 @@ export interface DungeonRoom { id: string; name: string; x: number; y: number; t
 export interface DungeonDefinition { id: string; name: string; townId: string; description: string; actionCost: number; rooms: DungeonRoom[] }
 export interface DungeonProgress { dungeonId: string; currentRoomId: string; visitedRoomIds: string[]; clearedRoomIds: string[]; completed: boolean }
 export interface NpcDefinition { id: string; name: string; jobId: string; homeTownId: string; goal: "gather" | "trade" | "train" | "craft"; riskTolerance: number; startingGold: number; personality: string }
-export interface NpcState { npcId: string; townId: string; gold: number; inventory: InventoryItem[]; equipment: Equipment; level: number; exp: number; hp: number; maxHp: number; mp: number; maxMp: number; jobId: string; dungeonId?: string; defeated?: boolean; lastIntent?: NpcIntent }
+export interface NpcState {
+  npcId: string; townId: string; gold: number; inventory: InventoryItem[]; equipment: Equipment;
+  level: number; exp: number; hp: number; maxHp: number; mp: number; maxMp: number; jobId: string;
+  dungeonId?: string; dungeonRoomId?: string; dungeonVisitedRoomIds?: string[]; dungeonClearedRoomIds?: string[];
+  dungeonEnemyHp?: number; completedDungeonIds?: string[];
+  defeated?: boolean; lastIntent?: NpcIntent;
+}
 export interface NpcIntent { action: "explore" | "buy" | "sell" | "train" | "craft" | "rest" | "travel" | "enterDungeon" | "battle" | "return"; score: number; reason: string }
 export interface NpcSimulationState { tick: number; npcs: NpcState[]; events: string[] }
 export interface MarketQuote { itemId: string; basePrice: number; currentPrice: number; supply: number; demand: number }

@@ -5,7 +5,7 @@ import { createEconomy, recordMarketTrade } from "../src/game/economy";
 import { chooseNpcIntent, createNpcStates, simulateNpcTick } from "../src/game/npc";
 import { enterDungeon, leaveDungeon, moveDungeonRoom, travelToTown } from "../src/game/world";
 import { buyFromStore, sellToStore } from "../src/game/store";
-import { createAuctionListing, placeCasinoBet } from "../src/game/leisure";
+import { bidOnAuction, createAuctionListing, placeCasinoBet, settleAuction } from "../src/game/leisure";
 import { dungeons } from "../src/data/dungeons";
 import { createBrowserStorage } from "../src/game/persistence";
 
@@ -153,6 +153,27 @@ describe("basic game loop", () => {
   it("supports deterministic casino settlement and auction listing", () => {
     expect(placeCasinoBet(initialState(), 10, () => 0).gold).toBe(110);
     expect(createAuctionListing(initialState(), "iron_ore", 5, 100).auctionListings).toHaveLength(1);
+  });
+  it("settles auctions with escrow refunds, payment, delivery, and unsold returns", () => {
+    const listed = createAuctionListing(initialState(), "iron_ore", 5, 100);
+    const npcBid = bidOnAuction(listed, "auction-1", 12, "jin");
+    const sold = settleAuction(npcBid, "auction-1", 100);
+    expect(sold.gold).toBe(initialState().gold + 12);
+    expect(sold.auctionListings[0].settled).toBe(true);
+
+    const npcListing = {
+      ...initialState(),
+      auctionListings: [{ id: "npc-auction", sellerId: "jin", item: { id: "spirit_dew", quantity: 1 }, currentBid: 10, closesAt: 50, settled: false }]
+    };
+    const playerBid = bidOnAuction(npcListing, "npc-auction", 15);
+    const outbid = bidOnAuction(playerBid, "npc-auction", 18, "fumi");
+    expect(outbid.gold).toBe(initialState().gold);
+    const won = settleAuction(bidOnAuction(npcListing, "npc-auction", 15), "npc-auction", 50);
+    expect(won.gold).toBe(25);
+    expect(won.inventory.find((item) => item.id === "spirit_dew")?.quantity).toBe(1);
+
+    const returned = settleAuction(createAuctionListing(initialState(), "iron_ore", 5, 10), "auction-1", 10);
+    expect(returned.inventory.find((item) => item.id === "iron_ore")?.quantity).toBe(2);
   });
   it("defines a branched completed first dungeon with treasure, rest, and boss rooms", () => {
     const rooms = dungeons.twilight_field.rooms;
