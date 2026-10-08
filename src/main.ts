@@ -1,24 +1,33 @@
 import "./styles.css";
 import { battleAction, changeJob, enhanceWeapon, equip, explore, initialState, rest, useSkill } from "./game/engine";
 import { createNpcStates, simulateNpcTick } from "./game/npc";
-import { createBrowserStorage } from "./game/persistence";
+import { createBrowserStorage, createNpcStorage } from "./game/persistence";
 import { buyFromStore, sellToStore } from "./game/store";
 import type { NpcSimulationState } from "./game/types";
 import { enterDungeon, leaveDungeon, moveDungeonRoom, travelToTown } from "./game/world";
 import { getDirectionalExits, renderApp, type ActiveTab, type Direction } from "./ui/view";
 
 const storage = createBrowserStorage();
+const npcStorage = createNpcStorage();
 let state = storage.load() ?? initialState();
 let activeTab: ActiveTab = "journey";
 let showCompletion = Boolean(state.dungeon?.completed);
-let npcSimulation: NpcSimulationState = { tick: 0, npcs: createNpcStates(), events: [] };
+let npcSimulation: NpcSimulationState = npcStorage.load() ?? { tick: 0, npcs: createNpcStates(), events: [] };
+let saveFailed = false;
 const app = document.querySelector<HTMLDivElement>("#app")!;
 
-const render = (): void => { app.innerHTML = renderApp(state, activeTab, showCompletion, npcSimulation); };
+const render = (): void => {
+  const gearOpen = app.querySelector<HTMLDetailsElement>(".gear-access")?.open ?? false;
+  app.innerHTML = renderApp(state, activeTab, showCompletion, npcSimulation);
+  const gear = app.querySelector<HTMLDetailsElement>(".gear-access");
+  if (gear) gear.open = gearOpen;
+  if (saveFailed) app.querySelector(".play-mode")!.insertAdjacentHTML("afterend", '<p class="save-warning" role="alert">保存できませんでした。ブラウザーの保存設定と空き容量を確認してください。再読み込みすると今回の進行を失う可能性があります。</p>');
+};
 const finishAction = (previouslyCompleted = Boolean(state.dungeon?.completed)): void => {
   if (!previouslyCompleted && state.dungeon?.completed) showCompletion = true;
   npcSimulation = simulateNpcTick(npcSimulation, state.economy);
-  storage.save(state);
+  try { storage.save(state); npcStorage.save(npcSimulation); saveFailed = false; }
+  catch { saveFailed = true; }
   render();
 };
 
