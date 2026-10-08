@@ -56,7 +56,7 @@ async function run(width) {
   assert.equal(await page.locator('[data-tab="town"]').getAttribute("aria-selected"), "true");
   await inspect(page, prefix + "-town", { targets: [".tabs button", ".store-actions button", '[data-action="rest"]'] });
   await page.locator(".store-actions [data-buy]").first().click();
-  assert(await page.locator(".store .recent-event").isVisible(), "store result should appear near shop");
+  assert(await page.locator(".town-grid .recent-event").isVisible(), "store result should appear near shop");
 
   await page.locator('[data-tab="npc"]').click();
   assert.equal(await page.locator('[data-tab="npc"]').getAttribute("aria-selected"), "true");
