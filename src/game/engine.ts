@@ -85,8 +85,19 @@ const victory = (state: GameState, enemy: EnemyDefinition, random: () => number,
   if (room?.type === "boss" && next.dungeon) { next = { ...next, gold: next.gold + 40, dungeon: { ...next.dungeon, completed: true }, inventory: addItem(next.inventory, { id: "lucky_charm", quantity: 1 }) }; text += " 深層を制し、結びの根付と40文を得た！"; }
   return log(next, `${text} ${enemy.gold}文と${enemy.exp}経験を得た。${dropped.length ? ` ${dropped.map((drop) => items[drop.itemId].name).join("、")}を手に入れた。` : ""}`, "good");
 };
-export const equip = (state: GameState, itemId: string): GameState => { const definition = items[itemId]; if (!definition || definition.kind === "material") return state; const slot = definition.kind as Exclude<ItemKind, "material">; return log({ ...state, equipment: { ...state.equipment, [slot]: { id: itemId, quantity: 1, enhancement: state.inventory.find((entry) => entry.id === itemId)?.enhancement } } }, `「${definition.name}」を装備した。`, "good"); };
-export const enhanceWeapon = (state: GameState): GameState => { const weapon = state.equipment.weapon; if (!weapon) return log(state, "強化する武器がありません。", "danger"); const ore = state.inventory.find((entry) => entry.id === "iron_ore")?.quantity ?? 0; const cost = 12 + (weapon.enhancement ?? 0) * 10; if (ore < 2 || state.gold < cost) return log(state, `強化には鉄鉱石2個と${cost}文が必要です。`, "danger"); const enhancement = (weapon.enhancement ?? 0) + 1; return log({ ...state, gold: state.gold - cost, inventory: takeItem(state.inventory, "iron_ore", 2), equipment: { ...state.equipment, weapon: { ...weapon, enhancement } } }, `鍛冶場で「${items[weapon.id].name}」を +${enhancement} に強化した。`, "good"); };
+export const equip = (state: GameState, itemId: string): GameState => {
+  const definition = items[itemId];
+  const owned = state.inventory.filter((entry) => entry.id === itemId && entry.quantity > 0)
+    .sort((a, b) => (b.enhancement ?? 0) - (a.enhancement ?? 0))[0];
+  if (state.battle || !owned || !definition || definition.kind === "material") return state;
+  const slot = definition.kind as Exclude<ItemKind, "material">;
+  // Old saves kept enhancement only on equipment. Preserve that value too.
+  const existing = state.equipment[slot];
+  const enhancement = Math.max(owned.enhancement ?? 0, existing?.id === itemId ? existing.enhancement ?? 0 : 0);
+  const inventory = state.inventory.map((entry) => entry === owned ? { ...entry, enhancement } : entry);
+  return log({ ...state, inventory, equipment: { ...state.equipment, [slot]: { ...owned, quantity: 1, enhancement } } }, `「${definition.name}」を装備した。`, "good");
+};
+export const enhanceWeapon = (state: GameState): GameState => { const weapon = state.equipment.weapon; if (!weapon) return log(state, "強化する武器がありません。", "danger"); const ore = state.inventory.find((entry) => entry.id === "iron_ore")?.quantity ?? 0; const cost = 12 + (weapon.enhancement ?? 0) * 10; if (ore < 2 || state.gold < cost) return log(state, `強化には鉄鉱石2個と${cost}文が必要です。`, "danger"); const enhancement = (weapon.enhancement ?? 0) + 1; return log({ ...state, gold: state.gold - cost, inventory: takeItem(state.inventory, "iron_ore", 2).map((entry) => entry.id === weapon.id && (entry.enhancement === undefined || entry.enhancement === weapon.enhancement) ? { ...entry, enhancement } : entry), equipment: { ...state.equipment, weapon: { ...weapon, enhancement } } }, `鍛冶場で「${items[weapon.id].name}」を +${enhancement} に強化した。`, "good"); };
 export const rest = (state: GameState): GameState => state.battle || state.dungeon ? log(state, "宿へ戻ってから休みましょう。", "danger") : log({ ...state, hp: state.maxHp, mp: state.maxMp, actionPoints: state.maxActionPoints }, "宿で英気を養った。HP・MP・行動力が回復した。", "good");
 export const weaponPower = (state: GameState) => (state.equipment.weapon ? (items[state.equipment.weapon.id].attack ?? 0) + (state.equipment.weapon.enhancement ?? 0) * 2 : 0);
 export const changeJob = (state: GameState, jobId: string): GameState => {
