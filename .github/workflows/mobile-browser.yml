@@ -1,0 +1,38 @@
+name: Mobile viewport browser checks
+on:
+  push:
+    branches: [mobile-390px-browser-checks]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  mobile-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save --package-lock=false playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Start local preview
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/ayakashi-vite.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:5173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/ayakashi-vite.log
+          exit 1
+      - name: Test mobile UI at 390px and 320px
+        run: node scripts/mobile-viewport-check.mjs
+      - name: Upload browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-viewport-screenshots
+          path: artifacts/mobile/
+          if-no-files-found: ignore
