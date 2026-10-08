@@ -126,7 +126,9 @@ const townView = (state: GameState) => {
 const npcView = (simulation: NpcSimulationState) => {
   const cards = simulation.npcs.map((npcState) => {
     const definition = npcs[npcState.npcId];
-    const place = npcState.dungeonId ? dungeons[npcState.dungeonId]?.name : towns[npcState.townId]?.name;
+    const dungeon = npcState.dungeonId ? dungeons[npcState.dungeonId] : undefined;
+    const room = dungeon?.rooms.find((candidate) => candidate.id === npcState.dungeonRoomId);
+    const place = dungeon ? `${dungeon.name}${room ? `・${room.name}` : ""}` : towns[npcState.townId]?.name;
     return `<article class="npc-card"><div><p class="eyebrow">${jobs[npcState.jobId].name}</p><h3>${definition.name}</h3></div><dl><div><dt>現在地</dt><dd>${place}</dd></div><div><dt>活動</dt><dd>${npcState.lastIntent?.reason ?? definition.personality}</dd></div><div><dt>成長</dt><dd>Lv.${npcState.level} / ${npcState.gold}文</dd></div></dl></article>`;
   }).join("");
   const history = simulation.events.length ? simulation.events.slice(-6).reverse().map((event) => `<li>${event}</li>`).join("") : "<li>旅人たちは、それぞれの目的に向けて支度をしている。</li>";
