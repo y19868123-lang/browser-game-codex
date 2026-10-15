@@ -45,8 +45,9 @@ describe("mobile play and persistence", () => {
     createBrowserStorage().save(reequipped);
     expect(weaponPower(createBrowserStorage().load()!)).toBe(5);
     expect(reequipped.inventory.find(item => item.id === "bamboo_sword")?.enhancement).toBe(1);
-    const legacy = { ...enhanced, inventory: initialState().inventory };
-    expect(weaponPower(equip(legacy, "bamboo_sword"))).toBe(5);
+    const legacy = { ...enhanced, inventory: initialState().inventory.map(({ instanceId: _, ...item }) => item), equipment: { ...enhanced.equipment, weapon: { id: "bamboo_sword", quantity: 1, enhancement: 1 } } };
+    localStorage.setItem("legacy", JSON.stringify(legacy));
+    expect(weaponPower(equip(createBrowserStorage("legacy").load()!, "legacy-bamboo_sword-1"))).toBe(5);
     expect(equip(initialState(), "lucky_charm").equipment.accessory).toBeUndefined();
   });
   it("offers compact gear access, touch directions, and independent-save notice", () => {

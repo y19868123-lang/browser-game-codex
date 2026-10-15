@@ -44,16 +44,22 @@ const recentEvent = (state: GameState, compact = false) => {
   return `<section class="recent-event ${compact ? "compact" : ""}" aria-live="polite"><p class="eyebrow">直近の出来事</p><p class="${latest.tone}">◆ ${latest.text}</p></section>`;
 };
 
+const instanceMark = (item: { instanceId?: string }) => item.instanceId ? `個体 ${item.instanceId.slice(-6)}` : "";
+const equipmentName = (item: { id: string; enhancement?: number }) => `${items[item.id].name} +${item.enhancement ?? 0}`;
+
 const equipmentPanel = (state: GameState) => {
-  const equipment = Object.entries(state.equipment).map(([slot, item]) => `<div class="equipment"><span>${slot === "weapon" ? "武器" : slot === "armor" ? "防具" : "装飾"}</span><b>${item ? `${items[item.id].name}${item.enhancement ? ` +${item.enhancement}` : ""}` : "なし"}</b></div>`).join("");
+  const equipment = Object.entries(state.equipment).map(([slot, item]) => `<div class="equipment"><span>${slot === "weapon" ? "武器" : slot === "armor" ? "防具" : "装飾"}</span><b>${item ? `${equipmentName(item)}<small>${instanceMark(item)}</small>` : "なし"}</b></div>`).join("");
   return `<section class="panel compact-panel"><p class="eyebrow">身支度</p><h2>装備</h2>${equipment}<p class="statline">STR ${state.stats.str}　VIT ${state.stats.vit}　DEX ${state.stats.dex}<br>INT ${state.stats.int}　LUK ${state.stats.luk}　業 ${state.stats.karma}</p><p class="power">攻撃力 <b>${weaponPower(state) + state.stats.str + Math.floor(state.stats.dex / 3)}</b></p></section>`;
 };
 
 const inventoryPanel = (state: GameState) => {
   const inventory = state.inventory.map((entry) => {
     const item = items[entry.id];
-    const equipAttribute = item.kind !== "material" ? `data-equip="${item.id}"` : "";
-    return `<button class="item rarity-${item.rarity}" ${equipAttribute} ${state.battle ? "disabled" : ""}><span>${item.name}${entry.enhancement ? ` +${entry.enhancement}` : ""}</span><small>×${entry.quantity}　${item.description}</small></button>`;
+    const equipped = entry.instanceId && Object.values(state.equipment).some((candidate) => candidate?.instanceId === entry.instanceId);
+    const equipAttribute = item.kind !== "material" && entry.instanceId ? `data-equip="${entry.instanceId}"` : "";
+    const name = item.kind === "material" ? item.name : equipmentName(entry);
+    const detail = item.kind === "material" ? `×${entry.quantity}　${item.description}` : `${instanceMark(entry)}${equipped ? "　装備中" : ""}　${item.description}`;
+    return `<button class="item rarity-${item.rarity} ${equipped ? "selected" : ""}" ${equipAttribute} ${state.battle || item.kind === "material" ? "disabled" : ""}><span>${name}</span><small>${detail}</small></button>`;
   }).join("");
   return `<section class="panel compact-panel"><p class="eyebrow">荷袋</p><h2>持ち物</h2><div class="inventory">${inventory || "何も持っていない。"}</div></section>`;
 };
@@ -109,14 +115,24 @@ const journeyView = (state: GameState, showCompletion: boolean) => {
 const forgePanel = (state: GameState) => {
   const weapon = state.equipment.weapon;
   const ore = state.inventory.find((item) => item.id === "iron_ore")?.quantity ?? 0;
-  return `<section class="panel"><div class="section-title"><div><p class="eyebrow">鍛冶場</p><h2>武器を鍛える</h2></div><span>鉄鉱石 ${ore}</span></div><p>装備中の${weapon ? items[weapon.id].name : "武器"}を強化。攻撃力 +2、費用 ${12 + (weapon?.enhancement ?? 0) * 10}文。</p><button data-action="enhance" ${weapon ? "" : "disabled"}>${weapon ? `+${weapon.enhancement ?? 0} を強化` : "武器なし"}</button></section>`;
+  return `<section class="panel"><div class="section-title"><div><p class="eyebrow">鍛冶場</p><h2>武器を鍛える</h2></div><span>鉄鉱石 ${ore}</span></div><p>装備中の${weapon ? `${equipmentName(weapon)}（${instanceMark(weapon)}）` : "武器"}だけを強化。攻撃力 +2、費用 ${12 + (weapon?.enhancement ?? 0) * 10}文。</p><button data-action="enhance" ${weapon ? "" : "disabled"}>${weapon ? `${equipmentName(weapon)}を強化` : "武器なし"}</button></section>`;
 };
 
 const townView = (state: GameState) => {
   if (state.dungeon || state.battle) return `<div class="single-column"><section class="panel town-away"><p class="eyebrow">町・市場</p><h2>いまは町を離れている</h2><p>探索を終えて町へ戻ると、宿や店、鍛冶場を利用できる。</p>${state.battle ? `<button data-tab="journey">戦いへ戻る</button>` : `<button data-action="leave-dungeon">町へ戻る</button>`}</section>${recentEvent(state)}</div>`;
   const town = towns[state.locationTownId];
   const townStores = Object.values(stores).filter((store) => store.townId === state.locationTownId);
-  const storesHtml = `<section class="panel"><p class="eyebrow">町の店</p><h2>売買</h2>${townStores.map((store) => `<div class="store"><b>${store.name}</b>${store.stock.map((stock) => `<div><span>${items[stock.itemId].name}　${stock.price}文</span><span class="store-actions"><button data-buy="${store.id}:${stock.itemId}">買う</button><button class="quiet" data-sell="${store.id}:${stock.itemId}">売る</button></span></div>`).join("")}</div>`).join("") || "<p>この町の店舗は準備中です。</p>"}${recentEvent(state, true)}</section>`;
+  const storesHtml = `<section class="panel"><p class="eyebrow">町の店</p><h2>売買</h2>${townStores.map((store) => {
+    const accepted = new Set(store.stock.map((stock) => stock.itemId));
+    const sellable = state.inventory.filter((entry) => accepted.has(entry.id));
+    const sellRows = sellable.map((entry) => {
+      const definition = items[entry.id];
+      const equipped = entry.instanceId && Object.values(state.equipment).some((candidate) => candidate?.instanceId === entry.instanceId);
+      const name = definition.kind === "material" ? `${definition.name} ×${entry.quantity}` : `${equipmentName(entry)}（${instanceMark(entry)}）`;
+      return `<button class="sell-item ${equipped ? "selected" : ""}" data-sell="${store.id}:${entry.instanceId ?? entry.id}" ${equipped ? "disabled" : ""}><span>${name}</span><small>${equipped ? "装備中・売却不可" : `${Math.max(1, Math.floor(definition.value * .55))}文で売る`}</small></button>`;
+    }).join("");
+    return `<div class="store"><b>${store.name}</b><div class="store-stock">${store.stock.map((stock) => `<div><span>${items[stock.itemId].name}　${stock.price}文</span><span class="store-actions"><button data-buy="${store.id}:${stock.itemId}">買う</button></span></div>`).join("")}</div><p class="store-subtitle">売却する品</p><div class="sell-list">${sellRows || "<small>この店へ売れる品はありません。</small>"}</div></div>`;
+  }).join("") || "<p>この町の店舗は準備中です。</p>"}${recentEvent(state, true)}</section>`;
   const travel = `<section class="panel"><p class="eyebrow">町への移動</p><h2>街道</h2><div class="inventory">${Object.values(towns).map((candidate) => `<button class="item ${candidate.id === state.locationTownId ? "selected" : ""}" data-town="${candidate.id}" ${candidate.id === state.locationTownId ? "disabled" : ""}><span>${candidate.name}</span><small>${candidate.travelCost}文　${candidate.services.join("・")}</small></button>`).join("")}</div></section>`;
   const job = jobs[state.jobId];
   const career = `<section class="panel"><p class="eyebrow">職業</p><h2>${job.name}</h2><p>${job.description}</p><div class="inventory">${Object.values(jobs).filter((candidate) => candidate.id !== state.jobId).map((candidate) => `<button class="item" data-job="${candidate.id}"><span>${candidate.name}</span><small>Lv.${candidate.changeRequirement.level} / ${candidate.changeRequirement.gold}文　${candidate.description}</small></button>`).join("")}</div></section>`;

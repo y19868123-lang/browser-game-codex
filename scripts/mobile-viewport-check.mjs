@@ -57,6 +57,10 @@ async function run(width) {
   await inspect(page, prefix + "-town", { targets: [".tabs button", ".store-actions button", '[data-action="rest"]'] });
   await page.locator(".store-actions [data-buy]").first().click();
   assert(await page.locator(".town-grid .recent-event").isVisible(), "store result should appear near shop");
+  const swordSales = page.locator(".store").first().locator(".sell-list button");
+  assert.equal(await swordSales.count(), 2, "same-name equipment should have separate sale choices");
+  assert.equal(await swordSales.first().isDisabled(), true, "equipped instance must not be sellable");
+  assert((await swordSales.nth(1).innerText()).includes("竹刀 +0"), "enhancement should identify the purchased copy");
 
   await page.locator('[data-tab="npc"]').click();
   assert.equal(await page.locator('[data-tab="npc"]').getAttribute("aria-selected"), "true");
