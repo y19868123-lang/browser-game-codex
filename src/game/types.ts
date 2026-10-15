@@ -11,7 +11,7 @@ export interface ItemDefinition {
   id: string; name: string; kind: ItemKind; rarity: Rarity; description: string; value: number;
   attack?: number; defense?: number; modifiers?: Partial<Stats>; effects?: ItemEffect[]; requiredJobIds?: string[];
 }
-export interface InventoryItem { id: string; quantity: number; enhancement?: number; materialTraits?: string[] }
+export interface InventoryItem { id: string; quantity: number; enhancement?: number; materialTraits?: string[]; instanceId?: string }
 export interface EnemyDefinition { id: string; name: string; hp: number; attack: number; defense: number; exp: number; gold: number; trait?: "none" | "evasive" | "frenzied" | "cursed"; drops: Array<{ itemId: string; chance: number }> }
 export interface SkillDefinition { id: string; name: string; description: string; jobIds: string[]; mpCost: number; target: "enemy" | "self"; power?: number; effect?: "guard" | "recover" | "fortune"; karmaRange?: [number, number] }
 export interface JobDefinition { id: string; name: string; category: JobCategory; description: string; statGrowth: Partial<Stats>; skillIds: string[]; weaponKinds: ItemKind[]; changeRequirement: { level: number; gold: number } }

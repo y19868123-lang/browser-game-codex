@@ -4,19 +4,21 @@ import { items } from "../data/items";
 import { jobs } from "../data/jobs";
 import { skills } from "../data/skills";
 import { createEconomy } from "./economy";
+import { addInventoryItem, createInventoryItem, findInventoryItem, itemLabel, removeInventoryItem } from "./inventory";
 import type { EnemyDefinition, GameState, InventoryItem, ItemKind, LogEntry, StatKey } from "./types";
 
 const log = (state: GameState, text: string, tone: LogEntry["tone"] = "normal"): GameState => ({ ...state, log: [{ text, tone }, ...state.log].slice(0, 8) });
 const equippedBonus = (state: GameState, key: StatKey) => Object.values(state.equipment).reduce((total, item) => total + (item ? (items[item.id].modifiers?.[key] ?? 0) : 0), 0);
 const attack = (state: GameState) => state.stats.str + weaponPower(state) + Math.floor(state.stats.dex / 3);
 const defense = (state: GameState) => state.stats.vit + (items[state.equipment.armor?.id ?? ""]?.defense ?? 0);
-const addItem = (inventory: InventoryItem[], item: InventoryItem): InventoryItem[] => {
-  const found = inventory.find((entry) => entry.id === item.id && entry.enhancement === item.enhancement);
-  return found ? inventory.map((entry) => entry === found ? { ...entry, quantity: entry.quantity + item.quantity } : entry) : [...inventory, item];
-};
-const takeItem = (inventory: InventoryItem[], id: string, amount = 1): InventoryItem[] => inventory.flatMap((entry) => entry.id !== id ? [entry] : entry.quantity > amount ? [{ ...entry, quantity: entry.quantity - amount }] : []);
+const addItem = addInventoryItem;
+const takeItem = removeInventoryItem;
 export const expToNext = (level: number) => 30 + level * 20;
-export const initialState = (): GameState => ({ name: "旅の者", level: 1, exp: 0, gold: 40, actionPoints: 8, maxActionPoints: 8, hp: 30, maxHp: 30, mp: 10, maxMp: 10, stats: { str: 5, vit: 4, dex: 4, int: 3, luk: 3, karma: 0 }, jobId: "wanderer", learnedSkillIds: ["steady_strike"], locationTownId: "hinata_post", inventory: [{ id: "bamboo_sword", quantity: 1 }, { id: "traveler_robe", quantity: 1 }, { id: "iron_ore", quantity: 2 }], equipment: { weapon: { id: "bamboo_sword", quantity: 1 }, armor: { id: "traveler_robe", quantity: 1 } }, log: [{ text: "陽ノ宿場から、あなたの旅が始まる。", tone: "normal" }], explored: 0, defeated: 0, economy: createEconomy(), auctionListings: [] });
+export const initialState = (): GameState => {
+  const weapon: InventoryItem = { id: "bamboo_sword", quantity: 1, enhancement: 0, instanceId: "starter-weapon" };
+  const armor: InventoryItem = { id: "traveler_robe", quantity: 1, enhancement: 0, instanceId: "starter-armor" };
+  return { name: "旅の者", level: 1, exp: 0, gold: 40, actionPoints: 8, maxActionPoints: 8, hp: 30, maxHp: 30, mp: 10, maxMp: 10, stats: { str: 5, vit: 4, dex: 4, int: 3, luk: 3, karma: 0 }, jobId: "wanderer", learnedSkillIds: ["steady_strike"], locationTownId: "hinata_post", inventory: [weapon, armor, { id: "iron_ore", quantity: 2 }], equipment: { weapon: { ...weapon }, armor: { ...armor } }, log: [{ text: "陽ノ宿場から、あなたの旅が始まる。", tone: "normal" }], explored: 0, defeated: 0, economy: createEconomy(), auctionListings: [] };
+};
 export const explore = (state: GameState, random = Math.random): GameState => {
   if (state.battle) return log(state, "戦いの決着をつけてください。", "danger");
   if (state.actionPoints < 1) return log(state, "行動力が足りません。宿で休みましょう。", "danger");
@@ -93,22 +95,29 @@ const victory = (state: GameState, enemy: EnemyDefinition, random: () => number,
   const dungeonId = finishedBattle?.dungeonId;
   const room = dungeonId && roomId ? dungeons[dungeonId]?.rooms.find((candidate) => candidate.id === roomId) : undefined;
   if (room && next.dungeon) next = { ...next, dungeon: { ...next.dungeon, clearedRoomIds: [...new Set([...next.dungeon.clearedRoomIds, room.id])] } };
-  if (room?.type === "boss" && next.dungeon) { next = { ...next, gold: next.gold + 40, dungeon: { ...next.dungeon, completed: true }, inventory: addItem(next.inventory, { id: "lucky_charm", quantity: 1 }) }; text += " 深層を制し、結びの根付と40文を得た！"; }
+  if (room?.type === "boss" && next.dungeon) { next = { ...next, gold: next.gold + 40, dungeon: { ...next.dungeon, completed: true }, inventory: addItem(next.inventory, createInventoryItem("lucky_charm")) }; text += " 深層を制し、結びの根付と40文を得た！"; }
   return log(next, `${text} ${enemy.gold}文と${enemy.exp}経験を得た。${dropped.length ? ` ${dropped.map((drop) => items[drop.itemId].name).join("、")}を手に入れた。` : ""}`, "good");
 };
-export const equip = (state: GameState, itemId: string): GameState => {
-  const definition = items[itemId];
-  const owned = state.inventory.filter((entry) => entry.id === itemId && entry.quantity > 0)
-    .sort((a, b) => (b.enhancement ?? 0) - (a.enhancement ?? 0))[0];
+export const equip = (state: GameState, selector: string): GameState => {
+  const owned = findInventoryItem(state.inventory, selector)
+    ?? state.inventory.filter((entry) => entry.id === selector && entry.quantity > 0).sort((a, b) => (b.enhancement ?? 0) - (a.enhancement ?? 0))[0];
+  const definition = owned ? items[owned.id] : undefined;
   if (state.battle || !owned || !definition || definition.kind === "material") return state;
   const slot = definition.kind as Exclude<ItemKind, "material">;
-  // Old saves kept enhancement only on equipment. Preserve that value too.
-  const existing = state.equipment[slot];
-  const enhancement = Math.max(owned.enhancement ?? 0, existing?.id === itemId ? existing.enhancement ?? 0 : 0);
-  const inventory = state.inventory.map((entry) => entry === owned ? { ...entry, enhancement } : entry);
-  return log({ ...state, inventory, equipment: { ...state.equipment, [slot]: { ...owned, quantity: 1, enhancement } } }, `「${definition.name}」を装備した。`, "good");
+  return log({ ...state, equipment: { ...state.equipment, [slot]: { ...owned, quantity: 1 } } }, `「${itemLabel(owned)}」を装備した。`, "good");
 };
-export const enhanceWeapon = (state: GameState): GameState => { const weapon = state.equipment.weapon; if (!weapon) return log(state, "強化する武器がありません。", "danger"); const ore = state.inventory.find((entry) => entry.id === "iron_ore")?.quantity ?? 0; const cost = 12 + (weapon.enhancement ?? 0) * 10; if (ore < 2 || state.gold < cost) return log(state, `強化には鉄鉱石2個と${cost}文が必要です。`, "danger"); const enhancement = (weapon.enhancement ?? 0) + 1; return log({ ...state, gold: state.gold - cost, inventory: takeItem(state.inventory, "iron_ore", 2).map((entry) => entry.id === weapon.id && (entry.enhancement === undefined || entry.enhancement === weapon.enhancement) ? { ...entry, enhancement } : entry), equipment: { ...state.equipment, weapon: { ...weapon, enhancement } } }, `鍛冶場で「${items[weapon.id].name}」を +${enhancement} に強化した。`, "good"); };
+export const enhanceWeapon = (state: GameState): GameState => {
+  const weapon = state.equipment.weapon;
+  if (!weapon?.instanceId) return log(state, "強化する武器がありません。", "danger");
+  const owned = state.inventory.find((entry) => entry.instanceId === weapon.instanceId);
+  if (!owned) return log({ ...state, equipment: { ...state.equipment, weapon: undefined } }, "装備品を確認できなかったため、武器を外しました。", "danger");
+  const ore = state.inventory.find((entry) => entry.id === "iron_ore")?.quantity ?? 0;
+  const cost = 12 + (owned.enhancement ?? 0) * 10;
+  if (ore < 2 || state.gold < cost) return log(state, `強化には鉄鉱石2個と${cost}文が必要です。`, "danger");
+  const enhancement = (owned.enhancement ?? 0) + 1;
+  const inventory = takeItem(state.inventory, "iron_ore", 2).map((entry) => entry.instanceId === owned.instanceId ? { ...entry, enhancement } : entry);
+  return log({ ...state, gold: state.gold - cost, inventory, equipment: { ...state.equipment, weapon: { ...owned, enhancement } } }, `鍛冶場で「${items[owned.id].name}」を +${enhancement} に強化した。`, "good");
+};
 export const rest = (state: GameState): GameState => state.battle || state.dungeon ? log(state, "宿へ戻ってから休みましょう。", "danger") : log({ ...state, hp: state.maxHp, mp: state.maxMp, actionPoints: state.maxActionPoints }, "宿で英気を養った。HP・MP・行動力が回復した。", "good");
 export const weaponPower = (state: GameState) => (state.equipment.weapon ? (items[state.equipment.weapon.id].attack ?? 0) + (state.equipment.weapon.enhancement ?? 0) * 2 : 0);
 export const changeJob = (state: GameState, jobId: string): GameState => {

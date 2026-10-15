@@ -70,6 +70,7 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .equipment { border-bottom: 1px solid #3a4053; padding: 9px 0; font-size: .82rem; }
 .equipment span { color: #aab1c0; width: 3rem; }
 .equipment b { text-align: right; }
+.equipment b small { display: block; color: #8f99ab; font: 400 .62rem "Noto Sans JP"; }
 .statline { color: #bdc4d3; font-size: .72rem !important; line-height: 1.9 !important; }
 .power { border-top: 1px solid #3a4053; padding-top: 11px; }
 .power b { color: #f1cf70; font-size: 1.15rem; }
@@ -115,9 +116,14 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .town-heading { margin-bottom: 14px; padding: 2px 4px; }
 .town-heading p { margin: 4px 0 0; }
 .store { margin-top: 14px; padding-top: 12px; border-top: 1px solid #3a4053; }
-.store > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: .8rem; }
+.store-stock > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: .8rem; }
 .store-actions { display: flex; gap: 6px; }
 .store-actions button { padding: .45rem .65rem; }
+.store-subtitle { margin: 14px 0 7px !important; padding-top: 10px; border-top: 1px solid #3a4053; color: #d8b660 !important; }
+.sell-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.sell-item { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; text-align: left; }
+.sell-item span { min-width: 0; }
+.sell-item small { flex: 0 0 auto; color: #aab1c0; }
 .future-services { opacity: .8; }
 .town-away { max-width: 620px; }
 
@@ -163,9 +169,10 @@ footer span { color: #697388; }
   .dungeon-map { grid-template-columns: repeat(5, minmax(34px, 42px)); justify-content: center; }
   .direction-pad { margin-top: 4px; }
   .section-title { align-items: flex-start; }
-  .store > div { align-items: flex-start; flex-direction: column; }
+  .store-stock > div { align-items: flex-start; flex-direction: column; }
   .store-actions { width: 100%; }
   .store-actions button { flex: 1; }
+  .sell-list { grid-template-columns: 1fr; }
   .button-row > button { flex: 1; }
   .reward-grid { grid-template-columns: 1fr; }
   .reward-grid > div + div { border-left: 0; border-top: 1px solid #665c52; }

@@ -152,8 +152,9 @@ describe("basic game loop", () => {
   it("buys and sells through a town store without UI state", () => {
     const bought = buyFromStore({ ...initialState(), gold: 50 }, "hinata_weapons", "bamboo_sword");
     expect(bought.gold).toBe(32);
-    expect(bought.inventory.find((item) => item.id === "bamboo_sword")?.quantity).toBe(2);
-    expect(sellToStore(bought, "hinata_weapons", "bamboo_sword").gold).toBeGreaterThan(32);
+    expect(bought.inventory.filter((item) => item.id === "bamboo_sword")).toHaveLength(2);
+    const purchased = bought.inventory.find((item) => item.id === "bamboo_sword" && item.instanceId !== "starter-weapon")!;
+    expect(sellToStore(bought, "hinata_weapons", purchased.instanceId!).gold).toBeGreaterThan(32);
   });
   it("supports deterministic casino settlement and auction listing", () => {
     expect(placeCasinoBet(initialState(), 10, () => 0).gold).toBe(110);

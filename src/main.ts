@@ -71,7 +71,7 @@ app.addEventListener("click", (event) => {
   if (target.dataset.skill) state = useSkill(state, target.dataset.skill);
   if (target.dataset.dungeon) { state = enterDungeon(state, target.dataset.dungeon); activeTab = "journey"; showCompletion = false; }
   if (target.dataset.buy) { const [storeId, itemId] = target.dataset.buy.split(":"); state = buyFromStore(state, storeId, itemId); }
-  if (target.dataset.sell) { const [storeId, itemId] = target.dataset.sell.split(":"); state = sellToStore(state, storeId, itemId); }
+  if (target.dataset.sell) { const [storeId, ...selector] = target.dataset.sell.split(":"); state = sellToStore(state, storeId, selector.join(":")); }
   finishAction(previouslyCompleted);
 });
 
