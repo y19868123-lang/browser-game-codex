@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { battleAction, initialState } from "../src/game/engine";
+import { battleAction, equip, initialState } from "../src/game/engine";
 import { createNpcStates } from "../src/game/npc";
 import { enterDungeon, moveDungeonRoom } from "../src/game/world";
 import type { GameState, NpcSimulationState } from "../src/game/types";
@@ -59,6 +59,28 @@ describe("player-facing UI", () => {
     const html = render(attacked);
     expect(html).toContain("直近の出来事");
     expect(html).toContain(attacked.log[0].text);
+  });
+
+  it("labels skill categories and displays the actual equipped MP cost", () => {
+    const beads = { id: "ash_prayer_beads", quantity: 1, enhancement: 0, instanceId: "ui-beads" };
+    const battle = moveDungeonRoom(enterDungeon({ ...initialState(), learnedSkillIds: ["steady_strike", "warding_talisman"], inventory: [...initialState().inventory, beads] }, "twilight_field"), "meadow");
+    const equipped = equip({ ...battle, battle: undefined }, "ui-beads");
+    const html = render({ ...equipped, battle: battle.battle });
+    expect(html).toContain("物理技");
+    expect(html).toContain("術");
+    expect(html).toContain("正眼斬り");
+    expect(html).toContain("MP 2");
+    expect(html).toContain("破邪の札");
+    expect(html).toContain("MP 4");
+  });
+
+  it("shows special effects from the equipped individual", () => {
+    const charm = { id: "lucky_charm", quantity: 1, enhancement: 0, instanceId: "ui-charm" };
+    const state = equip({ ...initialState(), inventory: [...initialState().inventory, charm] }, "ui-charm");
+    const html = render(state);
+    expect(html).toContain("発動中の特殊効果");
+    expect(html).toContain("戦利品・希少発見率 +4%");
+    expect(html).toContain("LUK 5");
   });
 
   it("presents completed boss state and both reward groups", () => {

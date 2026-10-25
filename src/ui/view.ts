@@ -6,8 +6,8 @@ import { npcs } from "../data/npcs";
 import { skills } from "../data/skills";
 import { stores } from "../data/stores";
 import { towns } from "../data/towns";
-import { expToNext, weaponPower } from "../game/engine";
-import type { DungeonRoom, GameState, NpcSimulationState } from "../game/types";
+import { effectiveSkillCost, effectiveStat, equippedEffects, expToNext, weaponPower } from "../game/engine";
+import type { DungeonRoom, GameState, ItemEffect, NpcSimulationState, SkillCategory, StatKey } from "../game/types";
 
 export type ActiveTab = "journey" | "town" | "npc";
 export type Direction = "up" | "down" | "left" | "right";
@@ -46,10 +46,21 @@ const recentEvent = (state: GameState, compact = false) => {
 
 const instanceMark = (item: { instanceId?: string }) => item.instanceId ? `個体 ${item.instanceId.slice(-6)}` : "";
 const equipmentName = (item: { id: string; enhancement?: number }) => `${items[item.id].name} +${item.enhancement ?? 0}`;
+const skillCategoryLabel: Record<SkillCategory, string> = { physical: "物理技", spell: "術", stance: "構え" };
+const statKeys: StatKey[] = ["str", "vit", "dex", "int", "luk", "karma"];
+const statLabel = (key: StatKey) => key === "karma" ? "業" : key.toUpperCase();
+const effectLabel = (effect: ItemEffect) => {
+  if (effect.type === "dropRate") return `戦利品・希少発見率 +${Math.round(effect.value * 100)}%`;
+  if (effect.type === "skillCost") return `技・術の消費MP ${effect.value > 0 ? "+" : ""}${effect.value}（最低1）`;
+  if (effect.type === "karmaGate") return `術の業条件を上下 ${effect.value} 緩和`;
+  return effect.stat ? `${statLabel(effect.stat)} ${effect.value > 0 ? "+" : ""}${effect.value}` : "特殊効果";
+};
 
 const equipmentPanel = (state: GameState) => {
   const equipment = Object.entries(state.equipment).map(([slot, item]) => `<div class="equipment"><span>${slot === "weapon" ? "武器" : slot === "armor" ? "防具" : "装飾"}</span><b>${item ? `${equipmentName(item)}<small>${instanceMark(item)}</small>` : "なし"}</b></div>`).join("");
-  return `<section class="panel compact-panel"><p class="eyebrow">身支度</p><h2>装備</h2>${equipment}<p class="statline">STR ${state.stats.str}　VIT ${state.stats.vit}　DEX ${state.stats.dex}<br>INT ${state.stats.int}　LUK ${state.stats.luk}　業 ${state.stats.karma}</p><p class="power">攻撃力 <b>${weaponPower(state) + state.stats.str + Math.floor(state.stats.dex / 3)}</b></p></section>`;
+  const stats = statKeys.map((key) => `${statLabel(key)} ${effectiveStat(state, key)}${effectiveStat(state, key) !== state.stats[key] ? `<small> (${state.stats[key]}+${effectiveStat(state, key) - state.stats[key]})</small>` : ""}`);
+  const effects = equippedEffects(state);
+  return `<section class="panel compact-panel"><p class="eyebrow">身支度</p><h2>装備</h2>${equipment}<p class="statline">${stats.slice(0, 3).join("　")}<br>${stats.slice(3).join("　")}</p><p class="power">物理攻撃力 <b>${weaponPower(state) + effectiveStat(state, "str") + Math.floor(effectiveStat(state, "dex") / 3)}</b></p><div class="equipment-effects"><b>発動中の特殊効果</b>${effects.length ? `<ul>${effects.map((effect) => `<li>${effectLabel(effect)}</li>`).join("")}</ul>` : "<p>なし</p>"}</div></section>`;
 };
 
 const inventoryPanel = (state: GameState) => {
@@ -67,7 +78,7 @@ const inventoryPanel = (state: GameState) => {
 const battlePanel = (state: GameState) => {
   if (!state.battle) return "";
   const place = currentRoom(state)?.name;
-  const skillButtons = state.learnedSkillIds.map((id) => `<button data-skill="${id}">${skills[id].name}<small>MP ${skills[id].mpCost}</small></button>`).join("");
+  const skillButtons = state.learnedSkillIds.filter((id) => skills[id]).map((id) => `<button data-skill="${id}"><span>${skills[id].name}<em>${skillCategoryLabel[skills[id].category]}</em></span><small>MP ${effectiveSkillCost(state, skills[id])}</small></button>`).join("");
   return `<section class="battle panel"><div class="battle-status"><p class="eyebrow">${place ? `${place}での戦い` : "妖との戦い"}</p><h2>${state.battle.enemy.name}</h2><p class="battle-message">${state.battle.message}</p>${bar(state.battle.enemyHp, state.battle.enemy.hp, "enemy")}<small>${state.battle.enemyHp} / ${state.battle.enemy.hp}</small>${recentEvent(state, true)}</div><div class="battle-controls"><div class="battle-actions"><button data-action="attack">斬る</button><button data-action="guard">構える</button><button class="quiet" data-action="flee">退く</button></div><div class="skill-actions">${skillButtons}</div></div></section>`;
 };
 

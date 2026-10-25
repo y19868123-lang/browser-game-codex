@@ -58,8 +58,9 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .battle-message { margin: 10px 0; color: #efe2cc; }
 .battle-controls, .battle-actions, .skill-actions { display: grid; gap: 8px; }
 .battle-actions { grid-template-columns: repeat(3, 1fr); }
-.skill-actions button { display: flex; justify-content: space-between; gap: 8px; }
+.skill-actions button { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; }
 .skill-actions small { color: #bdc4d3; }
+.skill-actions em { display: inline-block; margin-left: 7px; padding: 2px 5px; border: 1px solid #6b7182; border-radius: 4px; color: #d8b660; font-size: .58rem; font-style: normal; white-space: nowrap; }
 
 .recent-event { border: 1px solid #5b5260; border-left: 3px solid #d8b660; border-radius: 8px; background: rgba(29,34,48,.92); padding: 12px 14px; }
 .recent-event p:last-child { margin-top: 5px; font: 700 .9rem/1.7 "Zen Old Mincho", serif; }
@@ -74,6 +75,10 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .statline { color: #bdc4d3; font-size: .72rem !important; line-height: 1.9 !important; }
 .power { border-top: 1px solid #3a4053; padding-top: 11px; }
 .power b { color: #f1cf70; font-size: 1.15rem; }
+.equipment-effects { margin-top: 11px; padding-top: 11px; border-top: 1px solid #3a4053; color: #bdc4d3; font-size: .7rem; line-height: 1.7; }
+.equipment-effects > b { color: #d8b660; }
+.equipment-effects ul { margin: 5px 0 0; padding-left: 1.25rem; }
+.equipment-effects p { margin-top: 5px; }
 .inventory { display: grid; gap: 7px; margin-top: 10px; }
 .item { text-align: left; padding: .55rem .65rem; display: grid; gap: 2px; }
 .item small { color: #aab1c0; font-size: .68rem; }

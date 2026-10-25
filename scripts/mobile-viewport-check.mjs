@@ -80,6 +80,8 @@ async function run(width) {
   await page.locator('[data-direction="right"]').click();
   await page.locator(".battle").waitFor();
   assert.equal(await page.locator(".direction-pad").count(), 0, "movement UI must be hidden in battle");
+  assert((await page.locator(".skill-actions").innerText()).includes("物理技"), "skill category should be visible");
+  assert((await page.locator(".skill-actions").innerText()).includes("MP 3"), "actual skill MP cost should be visible");
   await inspect(page, prefix + "-battle", { targets: [".tabs button", ".battle-actions button", ".skill-actions button"] });
 
   const before = await page.evaluate(() => ({
