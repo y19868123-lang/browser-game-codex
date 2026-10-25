@@ -5,12 +5,26 @@ import { jobs } from "../data/jobs";
 import { skills } from "../data/skills";
 import { createEconomy } from "./economy";
 import { addInventoryItem, createInventoryItem, findInventoryItem, itemLabel, removeInventoryItem } from "./inventory";
-import type { EnemyDefinition, GameState, InventoryItem, ItemKind, LogEntry, StatKey } from "./types";
+import type { EnemyDefinition, GameState, InventoryItem, ItemEffect, ItemKind, LogEntry, SkillDefinition, StatKey } from "./types";
 
 const log = (state: GameState, text: string, tone: LogEntry["tone"] = "normal"): GameState => ({ ...state, log: [{ text, tone }, ...state.log].slice(0, 8) });
+const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
 const equippedBonus = (state: GameState, key: StatKey) => Object.values(state.equipment).reduce((total, item) => total + (item ? (items[item.id].modifiers?.[key] ?? 0) : 0), 0);
-const attack = (state: GameState) => state.stats.str + weaponPower(state) + Math.floor(state.stats.dex / 3);
-const defense = (state: GameState) => state.stats.vit + (items[state.equipment.armor?.id ?? ""]?.defense ?? 0);
+export const effectiveStat = (state: GameState, key: StatKey) => state.stats[key] + equippedBonus(state, key);
+export const equippedEffects = (state: GameState): ItemEffect[] => Object.values(state.equipment).flatMap((item) => item ? (items[item.id].effects ?? []) : []);
+export const equippedEffectTotal = (state: GameState, type: ItemEffect["type"]) => equippedEffects(state).filter((effect) => effect.type === type).reduce((total, effect) => total + effect.value, 0);
+export const effectiveSkillCost = (state: GameState, skill: SkillDefinition | string) => clamp((typeof skill === "string" ? skills[skill]?.mpCost ?? 1 : skill.mpCost) + equippedEffectTotal(state, "skillCost"), 1, 99);
+export const effectiveKarmaRange = (state: GameState, skill: SkillDefinition): [number, number] | undefined => {
+  if (!skill.karmaRange) return undefined;
+  const gate = clamp(equippedEffectTotal(state, "karmaGate"), 0, 50);
+  return [skill.karmaRange[0] - gate, skill.karmaRange[1] + gate];
+};
+const attack = (state: GameState) => effectiveStat(state, "str") + weaponPower(state) + Math.floor(effectiveStat(state, "dex") / 3);
+const defense = (state: GameState) => effectiveStat(state, "vit") + (items[state.equipment.armor?.id ?? ""]?.defense ?? 0);
+const criticalChance = (state: GameState, fortune = false) => clamp(0.05 + effectiveStat(state, "luk") * 0.012 + (fortune ? effectiveStat(state, "luk") * 0.02 : 0), 0.05, fortune ? 0.65 : 0.5);
+export const evadeChance = (state: GameState) => clamp(0.03 + effectiveStat(state, "dex") * 0.008, 0.03, 0.3);
+export const fleeChance = (state: GameState) => clamp(0.55 + effectiveStat(state, "dex") * 0.025, 0.2, 0.95);
+export const dropChance = (state: GameState, base: number) => base >= 1 ? 1 : clamp(base + effectiveStat(state, "luk") * 0.005 + equippedEffectTotal(state, "dropRate"), 0.01, 0.95);
 const addItem = addInventoryItem;
 const takeItem = removeInventoryItem;
 export const expToNext = (level: number) => 30 + level * 20;
@@ -23,28 +37,29 @@ export const explore = (state: GameState, random = Math.random): GameState => {
   if (state.battle) return log(state, "戦いの決着をつけてください。", "danger");
   if (state.actionPoints < 1) return log(state, "行動力が足りません。宿で休みましょう。", "danger");
   const next = { ...state, actionPoints: state.actionPoints - 1, explored: state.explored + 1 };
-  const luck = state.stats.luk + equippedBonus(state, "luk");
+  const luck = effectiveStat(state, "luk");
   if (random() < 0.57) { const enemy = enemies[Math.min(enemies.length - 1, Math.floor(random() * enemies.length))]; return log({ ...next, battle: { enemy, enemyHp: enemy.hp, turn: 1, message: `${enemy.name}が行く手を阻んだ！`, target: "npc" } }, `${enemy.name}と遭遇した。`, "danger"); }
-  const item = random() < 0.12 + luck * 0.012 ? "spirit_dew" : "iron_ore";
+  const item = random() < clamp(0.12 + luck * 0.012 + equippedEffectTotal(state, "dropRate"), 0.05, 0.75) ? "spirit_dew" : "iron_ore";
   return log({ ...next, inventory: addItem(next.inventory, { id: item, quantity: 1 }) }, `探索で「${items[item].name}」を見つけた。`, "good");
 };
 export const battleAction = (state: GameState, action: "attack" | "guard" | "flee", random = Math.random): GameState => {
   if (!state.battle) return state;
   const { enemy } = state.battle;
   if (action === "flee") {
-    if (random() >= 0.55 + state.stats.dex * 0.025) return log({ ...state, battle: { ...state.battle, message: "逃走に失敗した！" } }, "逃走に失敗した。", "danger");
+    if (random() >= fleeChance(state)) return log({ ...state, battle: { ...state.battle, message: "逃走に失敗した！" } }, "逃走に失敗した。", "danger");
     const dungeon = retreatFromDungeonBattle(state);
     return log({ ...state, dungeon, battle: undefined }, dungeon ? "危険を避け、入口まで退いた。" : "危険を避け、戦いから離れた。");
   }
-  const critical = action === "attack" && random() < 0.05 + (state.stats.luk + equippedBonus(state, "luk")) * 0.012;
+  const critical = action === "attack" && random() < criticalChance(state);
   const evaded = action === "attack" && enemy.trait === "evasive" && random() < 0.2;
   const damage = evaded || action === "guard" ? 0 : Math.max(1, attack(state) + Math.floor(random() * 5) - enemy.defense) * (critical ? 2 : 1);
   const remaining = state.battle.enemyHp - damage;
   if (remaining <= 0) return victory(state, enemy, random, critical ? `会心の一撃！ ${enemy.name}を倒した。` : `${enemy.name}を倒した。`);
-  const incoming = Math.max(1, enemy.attack + Math.floor(random() * 4) + (enemy.trait === "frenzied" ? 2 : 0) - defense(state) - (action === "guard" ? 4 : 0));
+  const playerEvaded = random() < evadeChance(state);
+  const incoming = playerEvaded ? 0 : Math.max(1, enemy.attack + Math.floor(random() * 4) + (enemy.trait === "frenzied" ? 2 : 0) - defense(state) - (action === "guard" ? 4 : 0));
   const hp = Math.max(0, state.hp - incoming);
   if (hp === 0) return defeat(state);
-  const hitText = action === "guard" ? `身を守り、${incoming}の傷を受けた。` : evaded ? `${enemy.name}は身を翻し、攻撃をかわした。` : `${critical ? "会心の" : ""}${damage}の傷を与え、${incoming}の傷を受けた。`;
+  const hitText = playerEvaded ? `${damage ? `${critical ? "会心の" : ""}${damage}の傷を与え、` : ""}${enemy.name}の攻撃をかわした。` : action === "guard" ? `身を守り、${incoming}の傷を受けた。` : evaded ? `${enemy.name}は身を翻し、攻撃をかわした。` : `${critical ? "会心の" : ""}${damage}の傷を与え、${incoming}の傷を受けた。`;
   return log({ ...state, hp, battle: { ...state.battle, enemyHp: remaining, turn: state.battle.turn + 1, message: hitText } }, hitText, critical ? "good" : "normal");
 };
 const retreatFromDungeonBattle = (state: GameState) => {
@@ -58,26 +73,35 @@ const defeat = (state: GameState): GameState => log({ ...state, hp: Math.ceil(st
 export const useSkill = (state: GameState, skillId: string, random = Math.random): GameState => {
   const skill = skills[skillId];
   if (!state.battle || !skill || !state.learnedSkillIds.includes(skillId)) return log(state, "その技は今は使えません。", "danger");
-  if (state.mp < skill.mpCost) return log(state, "MPが足りません。", "danger");
-  if (skill.karmaRange && (state.stats.karma < skill.karmaRange[0] || state.stats.karma > skill.karmaRange[1])) return log(state, "今の業では、その術は結べません。", "danger");
+  const mpCost = effectiveSkillCost(state, skill);
+  if (state.mp < mpCost) return log(state, "MPが足りません。", "danger");
+  const karmaRange = effectiveKarmaRange(state, skill);
+  const karma = effectiveStat(state, "karma");
+  if (karmaRange && (karma < karmaRange[0] || karma > karmaRange[1])) return log(state, "今の業では、その術は結べません。", "danger");
   const battle = state.battle;
-  const paid = { ...state, mp: state.mp - skill.mpCost };
-  if (skill.effect === "recover") return log({ ...paid, hp: Math.min(paid.maxHp, paid.hp + 8 + paid.stats.int + Math.max(0, 5 - Math.abs(paid.stats.karma) / 10)) }, `「${skill.name}」で傷を清めた。`, "good");
+  const paid = { ...state, mp: state.mp - mpCost };
+  if (skill.effect === "recover") {
+    const recovery = Math.floor(8 + effectiveStat(paid, "int") * 2 + clamp(5 - Math.abs(karma) / 10, 0, 5));
+    return log({ ...paid, hp: Math.min(paid.maxHp, paid.hp + recovery) }, `「${skill.name}」で傷を清め、HPを${recovery}回復した。`, "good");
+  }
   if (skill.effect === "guard") return battleAction(paid, "guard", random);
-  const criticalBonus = skill.effect === "fortune" ? paid.stats.luk * 0.02 : 0;
   const enemy = battle.enemy;
-  const critical = random() < 0.05 + criticalBonus;
-  const damage = Math.max(1, attack(paid) + (skill.power ?? 0) + Math.floor(random() * 4) - enemy.defense) * (critical ? 2 : 1);
+  const critical = random() < criticalChance(paid, skill.effect === "fortune");
+  const spellPower = effectiveStat(paid, "int") * 2 + Math.floor(effectiveStat(paid, "luk") / 4) + clamp(3 - Math.floor(Math.abs(karma) / 10), 0, 3);
+  const basePower = skill.category === "spell" ? spellPower - Math.floor(enemy.defense / 2) : attack(paid) - enemy.defense;
+  const damage = Math.max(1, basePower + (skill.power ?? 0) + Math.floor(random() * 4)) * (critical ? 2 : 1);
   const remaining = battle.enemyHp - damage;
   if (remaining <= 0) return victory(paid, enemy, random, `${skill.name}で${enemy.name}を倒した。`);
-  const incoming = Math.max(1, enemy.attack + Math.floor(random() * 4) - defense(paid));
+  const playerEvaded = random() < evadeChance(paid);
+  const incoming = playerEvaded ? 0 : Math.max(1, enemy.attack + Math.floor(random() * 4) - defense(paid));
   if (paid.hp <= incoming) return defeat(paid);
-  return log({ ...paid, hp: paid.hp - incoming, battle: { ...battle, enemyHp: remaining, turn: battle.turn + 1, message: `${skill.name}！ ${damage}の傷を与えた。` } }, `${skill.name}！ ${damage}の傷を与えた。`, critical ? "good" : "normal");
+  const message = `${skill.name}！ ${damage}の傷を与えた。${playerEvaded ? ` ${enemy.name}の反撃をかわした。` : ""}`;
+  return log({ ...paid, hp: paid.hp - incoming, battle: { ...battle, enemyHp: remaining, turn: battle.turn + 1, message } }, message, critical ? "good" : "normal");
 };
 const victory = (state: GameState, enemy: EnemyDefinition, random: () => number, text: string): GameState => {
   const finishedBattle = state.battle;
   let next = { ...state, battle: undefined, gold: state.gold + enemy.gold, exp: state.exp + enemy.exp, defeated: state.defeated + 1 };
-  const dropped = enemy.drops.filter((drop) => random() < drop.chance);
+  const dropped = enemy.drops.filter((drop) => random() < dropChance(state, drop.chance));
   next = { ...next, inventory: dropped.reduce((inventory, drop) => addItem(inventory, { id: drop.itemId, quantity: 1 }), next.inventory) };
   while (next.exp >= expToNext(next.level)) {
     const growth = jobs[next.jobId].statGrowth;
