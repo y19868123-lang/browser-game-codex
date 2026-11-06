@@ -30,6 +30,17 @@ export const removeInventoryItem = (inventory: InventoryItem[], selector: string
   return inventory.flatMap((entry) => entry !== selected ? [entry] : entry.quantity > amount ? [{ ...entry, quantity: entry.quantity - amount }] : []);
 };
 
+/** Consumes an exact quantity across legacy or imported split material stacks. */
+export const removeMaterialQuantity = (inventory: InventoryItem[], itemId: string, amount: number): InventoryItem[] => {
+  let remaining = amount;
+  return inventory.flatMap((entry) => {
+    if (remaining <= 0 || entry.id !== itemId || entry.instanceId) return [entry];
+    const consumed = Math.min(remaining, entry.quantity);
+    remaining -= consumed;
+    return entry.quantity > consumed ? [{ ...entry, quantity: entry.quantity - consumed }] : [];
+  });
+};
+
 const legacyId = (itemId: string, ordinal: number): string => `legacy-${itemId}-${ordinal}`;
 
 /** Converts only old equipment stacks/copies. Existing instance IDs remain stable. */

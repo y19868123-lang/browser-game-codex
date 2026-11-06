@@ -3,11 +3,13 @@ import { enemies } from "../data/enemies";
 import { items } from "../data/items";
 import { jobs } from "../data/jobs";
 import { npcs } from "../data/npcs";
+import { recipes } from "../data/recipes";
 import { skills } from "../data/skills";
 import { stores } from "../data/stores";
 import { towns } from "../data/towns";
 import { effectiveSkillCost, effectiveStat, equippedEffects, expToNext, weaponPower } from "../game/engine";
-import type { DungeonRoom, GameState, ItemEffect, NpcSimulationState, SkillCategory, StatKey } from "../game/types";
+import { inventoryQuantity, recipeAvailability } from "../game/crafting";
+import type { DungeonRoom, GameState, ItemEffect, NpcSimulationState, RecipeDefinition, SkillCategory, StatKey } from "../game/types";
 
 export type ActiveTab = "journey" | "town" | "npc";
 export type Direction = "up" | "down" | "left" | "right";
@@ -54,6 +56,13 @@ const effectLabel = (effect: ItemEffect) => {
   if (effect.type === "skillCost") return `技・術の消費MP ${effect.value > 0 ? "+" : ""}${effect.value}（最低1）`;
   if (effect.type === "karmaGate") return `術の業条件を上下 ${effect.value} 緩和`;
   return effect.stat ? `${statLabel(effect.stat)} ${effect.value > 0 ? "+" : ""}${effect.value}` : "特殊効果";
+};
+const itemPerformance = (itemId: string) => {
+  const item = items[itemId];
+  const parts = [item.attack ? `攻撃 ${item.attack}` : "", item.defense ? `防御 ${item.defense}` : ""];
+  if (item.modifiers) parts.push(...Object.entries(item.modifiers).map(([key, value]) => `${statLabel(key as StatKey)} ${Number(value) >= 0 ? "+" : ""}${value}`));
+  if (item.effects) parts.push(...item.effects.map(effectLabel));
+  return parts.filter(Boolean).join("・") || "装備効果なし";
 };
 
 const equipmentPanel = (state: GameState) => {
@@ -126,7 +135,26 @@ const journeyView = (state: GameState, showCompletion: boolean) => {
 const forgePanel = (state: GameState) => {
   const weapon = state.equipment.weapon;
   const ore = state.inventory.find((item) => item.id === "iron_ore")?.quantity ?? 0;
-  return `<section class="panel"><div class="section-title"><div><p class="eyebrow">鍛冶場</p><h2>武器を鍛える</h2></div><span>鉄鉱石 ${ore}</span></div><p>装備中の${weapon ? `${equipmentName(weapon)}（${instanceMark(weapon)}）` : "武器"}だけを強化。攻撃力 +2、費用 ${12 + (weapon?.enhancement ?? 0) * 10}文。</p><button data-action="enhance" ${weapon ? "" : "disabled"}>${weapon ? `${equipmentName(weapon)}を強化` : "武器なし"}</button></section>`;
+  const enhanceCost = 12 + (weapon?.enhancement ?? 0) * 10;
+  const canEnhance = Boolean(weapon && ore >= 2 && state.gold >= enhanceCost);
+  const materialList = (recipe: RecipeDefinition) => `<ul class="recipe-materials">${recipe.materials.map((material) => {
+    const owned = inventoryQuantity(state, material.itemId);
+    return `<li class="${owned >= material.quantity ? "ready" : "missing"}"><span>${items[material.itemId].name} ×${material.quantity}</span><small>所持 ${owned}</small></li>`;
+  }).join("")}<li class="${state.gold >= recipe.goldCost ? "ready" : "missing"}"><span>製作費 ${recipe.goldCost}文</span><small>所持 ${state.gold}文</small></li></ul>`;
+  const craftCards = Object.values(recipes).filter((recipe) => recipe.kind === "craft").map((recipe) => {
+    const availability = recipeAvailability(state, recipe);
+    return `<article class="recipe-card"><div><p class="recipe-kind">製作</p><h4>${recipe.name}</h4><p>${recipe.description}</p></div>${materialList(recipe)}<p class="recipe-result"><b>完成</b> ${items[recipe.outputItemId].name}<small>${itemPerformance(recipe.outputItemId)}</small></p><button data-craft="${recipe.id}" ${availability.available ? "" : "disabled"}>${availability.available ? "製作する" : "素材・費用を確認"}</button></article>`;
+  }).join("");
+  const synthesisCards = Object.values(recipes).filter((recipe) => recipe.kind === "synthesis").map((recipe) => {
+    const candidates = state.inventory.filter((entry) => entry.id === recipe.inputEquipment?.itemId && entry.instanceId);
+    const targetButtons = candidates.map((target) => {
+      const availability = recipeAvailability(state, recipe, target.instanceId);
+      const label = availability.reason === "equipped" ? "装備中・合成不可" : availability.available ? "この個体を合成" : "素材・費用を確認";
+      return `<button class="synthesis-target" data-synthesize="${recipe.id}:${target.instanceId}" ${availability.available ? "" : "disabled"}><span>${equipmentName(target)}<small>${instanceMark(target)}</small></span><b>${label}</b></button>`;
+    }).join("") || '<button disabled>対象となる装備がない</button>';
+    return `<article class="recipe-card synthesis-card"><div><p class="recipe-kind">合成</p><h4>${recipe.name}</h4><p>${recipe.description}</p></div>${materialList(recipe)}<p class="recipe-result"><b>完成</b> ${items[recipe.outputItemId].name}<small>${itemPerformance(recipe.outputItemId)}・強化値引継ぎ</small></p><div class="synthesis-targets">${targetButtons}</div></article>`;
+  }).join("");
+  return `<section class="panel forge-panel"><div class="section-title"><div><p class="eyebrow">鍛冶場</p><h2>強化・製作・合成</h2></div><span>鉄鉱石 ${ore}</span></div><div class="forge-sections"><section class="forge-section"><p class="forge-step">一　強化</p><h3>装備中の武器を鍛える</h3><p>装備中の${weapon ? `${equipmentName(weapon)}（${instanceMark(weapon)}）` : "武器"}だけを強化。攻撃力 +2。</p><ul class="recipe-materials"><li class="${ore >= 2 ? "ready" : "missing"}"><span>鉄鉱石 ×2</span><small>所持 ${ore}</small></li><li class="${state.gold >= enhanceCost ? "ready" : "missing"}"><span>費用 ${enhanceCost}文</span><small>所持 ${state.gold}文</small></li></ul><button data-action="enhance" ${canEnhance ? "" : "disabled"}>${weapon ? `${equipmentName(weapon)}を強化` : "武器なし"}</button></section><section class="forge-section"><p class="forge-step">二　製作</p><h3>素材から装備を作る</h3><div class="recipe-grid">${craftCards}</div></section><section class="forge-section"><p class="forge-step">三　合成</p><h3>装備個体を鍛え直す</h3><div class="recipe-grid">${synthesisCards}</div></section></div>${recentEvent(state, true)}</section>`;
 };
 
 const townView = (state: GameState) => {
@@ -147,7 +175,7 @@ const townView = (state: GameState) => {
   const travel = `<section class="panel"><p class="eyebrow">町への移動</p><h2>街道</h2><div class="inventory">${Object.values(towns).map((candidate) => `<button class="item ${candidate.id === state.locationTownId ? "selected" : ""}" data-town="${candidate.id}" ${candidate.id === state.locationTownId ? "disabled" : ""}><span>${candidate.name}</span><small>${candidate.travelCost}文　${candidate.services.join("・")}</small></button>`).join("")}</div></section>`;
   const job = jobs[state.jobId];
   const career = `<section class="panel"><p class="eyebrow">職業</p><h2>${job.name}</h2><p>${job.description}</p><div class="inventory">${Object.values(jobs).filter((candidate) => candidate.id !== state.jobId).map((candidate) => `<button class="item" data-job="${candidate.id}"><span>${candidate.name}</span><small>Lv.${candidate.changeRequirement.level} / ${candidate.changeRequirement.gold}文　${candidate.description}</small></button>`).join("")}</div></section>`;
-  return `<div class="town-heading"><div><p class="eyebrow">現在地</p><h2>${town.name}</h2><p>${town.description}</p></div><button data-action="rest">宿で休む</button></div>${recentEvent(state)}<div class="town-grid"><div class="main-column">${storesHtml}${forgePanel(state)}</div><aside>${travel}${career}<section class="panel future-services"><p class="eyebrow">町の噂</p><h2>これからの賑わい</h2><p>競売と賭場は準備中。町ごとの施設として、旅の進行を壊さず開かれる予定です。</p></section></aside></div>`;
+  return `<div class="town-heading"><div><p class="eyebrow">現在地</p><h2>${town.name}</h2><p>${town.description}</p></div><button data-action="rest">宿で休む</button></div>${recentEvent(state)}<div class="town-grid"><div class="main-column">${storesHtml}${town.services.includes("blacksmith") ? forgePanel(state) : ""}</div><aside>${travel}${career}<section class="panel future-services"><p class="eyebrow">町の噂</p><h2>これからの賑わい</h2><p>競売と賭場は準備中。町ごとの施設として、旅の進行を壊さず開かれる予定です。</p></section></aside></div>`;
 };
 
 const npcView = (simulation: NpcSimulationState) => {

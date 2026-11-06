@@ -54,9 +54,33 @@ async function run(width) {
 
   await page.locator('[data-tab="town"]').click();
   assert.equal(await page.locator('[data-tab="town"]').getAttribute("aria-selected"), "true");
-  await inspect(page, prefix + "-town", { targets: [".tabs button", ".store-actions button", '[data-action="rest"]'] });
+  assert.equal(await page.locator(".forge-step").count(), 3, "forge should separate enhancement, crafting, and synthesis");
+  assert.equal(await page.locator('[data-craft="forge_field_iron_blade"]').isDisabled(), true, "unaffordable recipe should be disabled");
+  await inspect(page, prefix + "-town", { targets: [".tabs button", ".store-actions button", '[data-action="rest"]', ".forge-panel button"] });
+
+  await page.locator('[data-action="rest"]').click();
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("ayakashi-no-kuni.save"));
+    state.gold = 200;
+    const ore = state.inventory.find((entry) => entry.id === "iron_ore");
+    if (ore) ore.quantity = 12;
+    else state.inventory.push({ id: "iron_ore", quantity: 12 });
+    state.inventory.push({ id: "spirit_dew", quantity: 8 }, { id: "oni_fang", quantity: 4 });
+    localStorage.setItem("ayakashi-no-kuni.save", JSON.stringify(state));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-tab="town"]').click();
+  await page.locator('[data-craft="forge_field_iron_blade"]').click();
+  assert((await page.locator(".forge-panel .recent-event").innerText()).includes("製作"), "craft result should appear in the forge");
+  const synthesis = page.locator('[data-synthesize^="temper_twilight_blade:"]');
+  assert.equal(await synthesis.count(), 1, "crafted instance should be a synthesis target");
+  await synthesis.click();
+  assert((await page.locator(".forge-panel .recent-event").innerText()).includes("合成"), "synthesis result should appear in the forge");
+  const craftedSave = await page.evaluate(() => JSON.parse(localStorage.getItem("ayakashi-no-kuni.save")));
+  assert(craftedSave.inventory.some((entry) => entry.id === "twilight_iron_blade" && entry.instanceId), "synthesized equipment should be saved with an instance ID");
+
   await page.locator(".store-actions [data-buy]").first().click();
-  assert(await page.locator(".town-grid .recent-event").isVisible(), "store result should appear near shop");
+  assert(await page.locator(".town-grid .main-column > .panel:first-child .recent-event").isVisible(), "store result should appear near shop");
   const swordSales = page.locator(".store").first().locator(".sell-list button");
   assert.equal(await swordSales.count(), 2, "same-name equipment should have separate sale choices");
   assert.equal(await swordSales.first().isDisabled(), true, "equipped instance must not be sellable");
