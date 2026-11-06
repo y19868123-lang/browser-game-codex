@@ -132,6 +132,30 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .future-services { opacity: .8; }
 .town-away { max-width: 620px; }
 
+.forge-panel > .section-title { margin-bottom: 14px; }
+.forge-sections { display: grid; gap: 16px; }
+.forge-section { padding-top: 14px; border-top: 1px solid #465067; }
+.forge-section > p { margin: 6px 0 10px; color: #bdc4d3; font-size: .78rem; line-height: 1.7; }
+.forge-step, .recipe-kind { color: #d8b660 !important; font-size: .66rem !important; font-weight: 700; letter-spacing: .12em; }
+.recipe-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+.recipe-card { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 12px; border: 1px solid #4b556d; border-radius: 9px; background: #1d2332; }
+.recipe-card h4 { margin: 2px 0 0; font-family: "Zen Old Mincho", serif; color: #f3e3b4; }
+.recipe-card > div > p:last-child { margin-top: 5px; color: #aeb6c5; font-size: .7rem; line-height: 1.55; }
+.recipe-materials { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: .7rem; }
+.recipe-materials li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 6px; border-radius: 4px; background: #171c2a; }
+.recipe-materials small { color: #aab1c0; white-space: nowrap; }
+.recipe-materials .ready span::before { content: "✓ "; color: #7dbd9f; }
+.recipe-materials .missing span::before { content: "△ "; color: #d38a7c; }
+.recipe-materials .missing { color: #efaaa5; }
+.recipe-result { margin: 0 !important; padding: 8px; border-left: 2px solid #d8b660; background: rgba(216,182,96,.06); color: #ece2ca !important; font-size: .74rem !important; line-height: 1.55 !important; }
+.recipe-result b { color: #d8b660; margin-right: 4px; }
+.recipe-result small { display: block; margin-top: 3px; color: #aeb6c5; }
+.synthesis-card { grid-column: 1 / -1; }
+.synthesis-targets { display: grid; gap: 6px; }
+.synthesis-target { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; }
+.synthesis-target span small { display: block; margin-top: 2px; color: #8f99ab; font-size: .62rem; }
+.synthesis-target b { color: #d8b660; font-size: .68rem; text-align: right; }
+
 .npc-layout { grid-template-columns: 1.4fr .8fr; align-items: start; }
 .npc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
 .npc-card { border: 1px solid #465067; border-radius: 8px; padding: 13px; background: #1d2332; }
@@ -178,6 +202,10 @@ footer span { color: #697388; }
   .store-actions { width: 100%; }
   .store-actions button { flex: 1; }
   .sell-list { grid-template-columns: 1fr; }
+  .recipe-grid { grid-template-columns: 1fr; }
+  .synthesis-card { grid-column: auto; }
+  .synthesis-target { align-items: flex-start; flex-direction: column; }
+  .synthesis-target b { text-align: left; }
   .button-row > button { flex: 1; }
   .reward-grid { grid-template-columns: 1fr; }
   .reward-grid > div + div { border-left: 0; border-top: 1px solid #665c52; }

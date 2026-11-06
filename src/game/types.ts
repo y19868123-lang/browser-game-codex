@@ -12,6 +12,12 @@ export interface ItemDefinition {
   attack?: number; defense?: number; modifiers?: Partial<Stats>; effects?: ItemEffect[]; requiredJobIds?: string[];
 }
 export interface InventoryItem { id: string; quantity: number; enhancement?: number; materialTraits?: string[]; instanceId?: string }
+export type RecipeKind = "craft" | "synthesis";
+export interface RecipeDefinition {
+  id: string; name: string; description: string; kind: RecipeKind; facilities: ServiceType[];
+  materials: Array<{ itemId: string; quantity: number }>; goldCost: number; outputItemId: string;
+  inputEquipment?: { itemId: string; preserveEnhancement: boolean };
+}
 export interface EnemyDefinition { id: string; name: string; hp: number; attack: number; defense: number; exp: number; gold: number; trait?: "none" | "evasive" | "frenzied" | "cursed"; drops: Array<{ itemId: string; chance: number }> }
 export type SkillCategory = "physical" | "spell" | "stance";
 export interface SkillDefinition { id: string; name: string; description: string; jobIds: string[]; category: SkillCategory; mpCost: number; target: "enemy" | "self"; power?: number; effect?: "guard" | "recover" | "fortune"; karmaRange?: [number, number] }

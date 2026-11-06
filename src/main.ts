@@ -1,4 +1,5 @@
 import "./styles.css";
+import { executeRecipe } from "./game/crafting";
 import { battleAction, changeJob, enhanceWeapon, equip, explore, initialState, rest, useSkill } from "./game/engine";
 import { createNpcStates, simulateNpcTick } from "./game/npc";
 import { createBrowserStorage, createNpcStorage } from "./game/persistence";
@@ -42,7 +43,7 @@ const moveInDirection = (direction: Direction): boolean => {
 };
 
 app.addEventListener("click", (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>("[data-action], [data-tab], [data-direction], [data-equip], [data-town], [data-job], [data-skill], [data-dungeon], [data-buy], [data-sell]");
+  const target = (event.target as HTMLElement).closest<HTMLElement>("[data-action], [data-tab], [data-direction], [data-equip], [data-town], [data-job], [data-skill], [data-dungeon], [data-buy], [data-sell], [data-craft], [data-synthesize]");
   if (!target || target.matches(":disabled")) return;
   if (target.dataset.tab) {
     activeTab = target.dataset.tab as ActiveTab;
@@ -72,6 +73,8 @@ app.addEventListener("click", (event) => {
   if (target.dataset.dungeon) { state = enterDungeon(state, target.dataset.dungeon); activeTab = "journey"; showCompletion = false; }
   if (target.dataset.buy) { const [storeId, itemId] = target.dataset.buy.split(":"); state = buyFromStore(state, storeId, itemId); }
   if (target.dataset.sell) { const [storeId, ...selector] = target.dataset.sell.split(":"); state = sellToStore(state, storeId, selector.join(":")); }
+  if (target.dataset.craft) state = executeRecipe(state, target.dataset.craft);
+  if (target.dataset.synthesize) { const [recipeId, ...selector] = target.dataset.synthesize.split(":"); state = executeRecipe(state, recipeId, selector.join(":")); }
   finishAction(previouslyCompleted);
 });
 
