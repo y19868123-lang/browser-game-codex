@@ -1,5 +1,5 @@
 import { items } from "../data/items";
-import type { Equipment, GameState, InventoryItem, ItemKind } from "./types";
+import type { Equipment, InventoryItem, ItemKind } from "./types";
 
 let sequence = 0;
 const equipmentKinds: ItemKind[] = ["weapon", "armor", "accessory"];
@@ -44,7 +44,7 @@ export const removeMaterialQuantity = (inventory: InventoryItem[], itemId: strin
 const legacyId = (itemId: string, ordinal: number): string => `legacy-${itemId}-${ordinal}`;
 
 /** Converts only old equipment stacks/copies. Existing instance IDs remain stable. */
-export const migrateEquipmentInstances = (state: GameState): GameState => {
+export const migrateEquipmentInstances = <T extends { inventory: InventoryItem[]; equipment: Equipment }>(state: T): T => {
   const inventory: InventoryItem[] = [];
   const ordinals: Record<string, number> = {};
   for (const entry of state.inventory) {

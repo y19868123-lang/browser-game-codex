@@ -7,6 +7,8 @@ export const createEconomy = (): EconomyState => ({
 });
 
 export const priceFor = (economy: EconomyState, itemId: string, townMultiplier = 1): number => Math.ceil((economy.quotes[itemId]?.currentPrice ?? 0) * townMultiplier);
+export const npcMarketCash = (economy: EconomyState): number => economy.npcMarketGold ?? 300;
+export const npcSellPrice = (economy: EconomyState, itemId: string): number => Math.max(1, Math.floor(priceFor(economy, itemId) * 0.55));
 
 /** Records finite market activity. Server ticks can call this for both players and NPCs. */
 export const recordMarketTrade = (economy: EconomyState, itemId: string, side: "buy" | "sell", quantity: number): EconomyState => {

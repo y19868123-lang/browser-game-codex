@@ -38,8 +38,8 @@ export interface NpcState {
 export interface NpcIntent { action: "explore" | "buy" | "sell" | "train" | "craft" | "rest" | "travel" | "enterDungeon" | "battle" | "return"; score: number; reason: string }
 export interface NpcSimulationState { tick: number; npcs: NpcState[]; events: string[] }
 export interface MarketQuote { itemId: string; basePrice: number; currentPrice: number; supply: number; demand: number }
-export interface EconomyState { quotes: Record<string, MarketQuote>; listingsEnabled: boolean }
-export interface AuctionListing { id: string; sellerId: string; item: InventoryItem; currentBid: number; bidderId?: string; closesAt: number; settled: boolean }
+export interface EconomyState { quotes: Record<string, MarketQuote>; listingsEnabled: boolean; npcMarketGold?: number }
+export interface AuctionListing { id: string; sellerId: string; item: InventoryItem; currentBid: number; bidderId?: string; closesAt: number; settled: boolean; townId?: string; fundedNpcBid?: boolean }
 export interface CasinoResult { stake: number; payout: number; outcome: "loss" | "win" | "jackpot" }
 export interface Equipment { weapon?: InventoryItem; armor?: InventoryItem; accessory?: InventoryItem }
 export interface BattleState { enemy: EnemyDefinition; enemyHp: number; turn: number; message: string; target: BattleTarget; dungeonId?: string; roomId?: string }

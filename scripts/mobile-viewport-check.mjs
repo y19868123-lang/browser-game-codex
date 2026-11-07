@@ -122,6 +122,40 @@ async function run(width) {
   }));
   assert.deepEqual(after, before, "player and NPC saves must survive reload");
   await inspect(page, prefix + "-reloaded", { targets: [".tabs button", ".battle-actions button"] });
+
+  // Isolate the auction flow with a valid town save and an unequipped crafted copy.
+  await page.evaluate(() => {
+    const save = JSON.parse(localStorage.getItem("ayakashi-no-kuni.save"));
+    delete save.battle;
+    delete save.dungeon;
+    save.locationTownId = "mist_port";
+    save.inventory.push({ id: "field_iron_blade", quantity: 1, instanceId: "mobile-blade", enhancement: 2 });
+    save.auctionListings.push({ id: "mobile-npc-lot", townId: "mist_port", sellerId: "fumi",
+      item: { id: "spirit_dew", quantity: 1 }, currentBid: 3, closesAt: save.auctionWorld.state.tick + 4, settled: false });
+    localStorage.setItem("ayakashi-no-kuni.save", JSON.stringify(save));
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-tab="town"]').click();
+  const auction = page.locator(".auction-panel");
+  const form = auction.locator('[data-auction-form="list"]');
+  assert.equal(await form.locator('option[value="starter-weapon"]').count(), 0);
+  await form.locator("select").selectOption("mobile-blade");
+  await form.locator('input[name="price"]').fill("500");
+  await form.getByRole("button", { name: "出品する" }).click();
+  const playerLot = auction.locator(".auction-lot").filter({ hasText: "野鉄の刀" });
+  assert.match(await playerLot.innerText(), /野鉄の刀 \+2/);
+  assert.equal(await form.locator('option[value="mobile-blade"]').count(), 0);
+  await auction.locator('[data-auction-form="mobile-npc-lot"] button').click();
+  assert.match(await auction.locator(".auction-lot").filter({ hasText: "霊露" }).innerText(), /最高入札：あなた 3文/);
+  const countdown = await playerLot.innerText();
+  await inspect(page, prefix + "-auction", { targets: [".auction-panel button", ".auction-panel select", ".auction-panel input"] });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.locator('[data-tab="town"]').click();
+  assert.equal(await playerLot.innerText(), countdown);
+  for (let i = 0; i < 4; i++) await auction.locator('[data-action="wait-auction"]').click();
+  assert.match(await auction.innerText(), /返却済み/);
+  assert.match(await auction.innerText(), /荷袋へ受取済み/);
+  assert.equal(await form.locator('option[value="mobile-blade"]').count(), 1);
   if (errors.length) issues.push(prefix + ": JavaScript errors: " + errors.join("; "));
   await context.close();
 }

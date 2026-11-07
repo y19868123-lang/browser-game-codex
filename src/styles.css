@@ -131,6 +131,10 @@ header { border-bottom: 1px solid #3a4053; padding-bottom: 16px; }
 .sell-item small { flex: 0 0 auto; color: #aab1c0; }
 .future-services { opacity: .8; }
 .town-away { max-width: 620px; }
+.auction-panel form, .auction-panel label, .auction-lot { display: grid; gap: 8px; min-width: 0; }
+.auction-panel form, .auction-lot { margin: 12px 0; padding: 10px; border: 1px solid #465067; border-radius: 8px; }
+.auction-panel input, .auction-panel select { width: 100%; min-width: 0; min-height: 44px; border-radius: 6px; border: 1px solid #5d6680; background: #171c2a; color: inherit; font: inherit; padding: 6px; }
+.auction-panel label, .auction-panel li, .auction-lot p { font-size: .83rem; line-height: 1.55; }
 
 .forge-panel > .section-title { margin-bottom: 14px; }
 .forge-sections { display: grid; gap: 16px; }
