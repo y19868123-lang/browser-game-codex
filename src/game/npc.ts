@@ -3,6 +3,8 @@ import { enemies } from "../data/enemies";
 import { items } from "../data/items";
 import { npcs } from "../data/npcs";
 import { towns } from "../data/towns";
+import { npcMarketCash, npcSellPrice, priceFor, recordMarketTrade } from "./economy";
+import { addInventoryItem, createInventoryItem, migrateEquipmentInstances, removeInventoryItem, removeMaterialQuantity } from "./inventory";
 import type { DungeonRoom, EconomyState, InventoryItem, NpcIntent, NpcSimulationState, NpcState } from "./types";
 
 export const createNpcStates = (): NpcState[] => Object.values(npcs).map((npc) => ({
@@ -21,14 +23,7 @@ export const createNpcStates = (): NpcState[] => Object.values(npcs).map((npc) =
   completedDungeonIds: []
 }));
 
-const addInventoryItem = (inventory: InventoryItem[], itemId: string): InventoryItem[] => {
-  const found = inventory.find((entry) => entry.id === itemId && !entry.enhancement);
-  return found
-    ? inventory.map((entry) => entry === found ? { ...entry, quantity: entry.quantity + 1 } : entry)
-    : [...inventory, { id: itemId, quantity: 1 }];
-};
-
-const addItem = (npc: NpcState, itemId: string): NpcState => ({ ...npc, inventory: addInventoryItem(npc.inventory, itemId) });
+const addItem = (npc: NpcState, itemId: string): NpcState => ({ ...npc, inventory: addInventoryItem(npc.inventory, createInventoryItem(itemId)) });
 const weaponPower = (npc: NpcState) => npc.equipment.weapon ? (items[npc.equipment.weapon.id].attack ?? 0) + (npc.equipment.weapon.enhancement ?? 0) * 2 : 1;
 const defensePower = (npc: NpcState) => 2 + npc.level * 2 + (npc.equipment.armor ? (items[npc.equipment.armor.id].defense ?? 0) : 0);
 
@@ -40,7 +35,7 @@ const equipUsefulLoot = (npc: NpcState, itemId: string): NpcState => {
   const equippedDefinition = equipped ? items[equipped.id] : undefined;
   const score = definition.attack ?? definition.defense ?? definition.value;
   const equippedScore = equippedDefinition ? (equippedDefinition.attack ?? equippedDefinition.defense ?? equippedDefinition.value) : -1;
-  return score > equippedScore ? { ...npc, equipment: { ...npc.equipment, [slot]: { id: itemId, quantity: 1 } } } : npc;
+  return score > equippedScore ? { ...npc, equipment: { ...npc.equipment, [slot]: { ...npc.inventory[npc.inventory.length - 1] } } } : npc;
 };
 
 const receiveItem = (npc: NpcState, itemId: string): NpcState => equipUsefulLoot(addItem(npc, itemId), itemId);
@@ -66,6 +61,10 @@ const duel = (attacker: NpcState, defender: NpcState): [NpcState, NpcState, stri
 };
 
 const playableDungeonAt = (townId: string) => Object.values(dungeons).find((dungeon) => dungeon.townId === townId && dungeon.rooms.length > 0);
+const sellableMaterial = (npc: NpcState, economy: EconomyState) => npc.inventory.find((item) => items[item.id]?.kind === "material" && item.quantity > 0 && economy.quotes[item.id] && npcMarketCash(economy) >= npcSellPrice(economy, item.id));
+const auctionDestination = (npc: NpcState) => npcs[npc.npcId].goal === "trade" && npc.inventory.some((item) => items[item.id]?.kind === "material" && item.quantity >= 2)
+  ? Object.values(towns).find((town) => town.id !== npc.townId && town.services.includes("auction") && npc.gold >= town.travelCost + 10)
+  : undefined;
 
 /** Scores stateful goals; player targets are intentionally absent. */
 export const chooseNpcIntent = (state: NpcState, economy: EconomyState): NpcIntent => {
@@ -73,9 +72,10 @@ export const chooseNpcIntent = (state: NpcState, economy: EconomyState): NpcInte
   const retreatThreshold = Math.max(0.08, 0.4 - definition.riskTolerance * 0.35);
   if (state.defeated || state.hp <= state.maxHp * retreatThreshold) return { action: state.dungeonId ? "return" : "rest", score: 100, reason: "傷を癒やす" };
   if (state.dungeonId) return { action: "explore", score: 80, reason: "ダンジョンの部屋を進む" };
-  if (!state.equipment.weapon && state.gold >= 18) return { action: "buy", score: 75, reason: "武器を整える" };
+  if (!state.equipment.weapon && economy.quotes.bamboo_sword?.supply > 0 && state.gold >= priceFor(economy, "bamboo_sword")) return { action: "buy", score: 75, reason: "武器を整える" };
   if (state.equipment.weapon && (state.equipment.weapon.enhancement ?? 0) < 1 && state.gold >= 12 && state.inventory.some((item) => item.id === "iron_ore" && item.quantity >= 2)) return { action: "craft", score: 70, reason: "武器を鍛える" };
-  if (definition.goal === "trade" && state.inventory.length) return { action: "sell", score: 65, reason: "荷を相場へ流す" };
+  if (auctionDestination(state)) return { action: "travel", score: 68, reason: "余った素材を競売所へ運ぶ" };
+  if (definition.goal === "trade" && sellableMaterial(state, economy)) return { action: "sell", score: 65, reason: "荷を相場へ流す" };
   if (playableDungeonAt(state.townId)) return { action: "enterDungeon", score: 60, reason: "経験と素材を求める" };
   const dungeonTown = Object.values(towns).find((town) => playableDungeonAt(town.id) && state.gold >= town.travelCost + 10);
   if (dungeonTown) return { action: "travel", score: 55, reason: "探索地のある町へ向かう" };
@@ -218,13 +218,11 @@ const applyLevelUps = (npc: NpcState): { npc: NpcState; events: string[] } => {
 };
 
 /** A pure, server-schedulable tick. It has no player target or player attack path. */
-export const simulateNpcTick = (simulation: NpcSimulationState, economy: EconomyState, random = Math.random): NpcSimulationState => {
+export const simulateNpcEconomyTick = (simulation: NpcSimulationState, economy: EconomyState, random = Math.random) => {
   const events: string[] = [];
   const skipIndexes = new Set<number>();
   const next: NpcState[] = simulation.npcs.map((npc) => ({
-    ...npc,
-    inventory: npc.inventory.map((item) => ({ ...item })),
-    equipment: { ...npc.equipment },
+    ...migrateEquipmentInstances(npc),
     dungeonVisitedRoomIds: npc.dungeonVisitedRoomIds ? [...npc.dungeonVisitedRoomIds] : undefined,
     dungeonClearedRoomIds: npc.dungeonClearedRoomIds ? [...npc.dungeonClearedRoomIds] : undefined,
     completedDungeonIds: npc.completedDungeonIds ? [...npc.completedDungeonIds] : []
@@ -241,22 +239,26 @@ export const simulateNpcTick = (simulation: NpcSimulationState, economy: Economy
       npc = clearDungeon({ ...npc, hp: Math.max(1, npc.hp) });
       events.push(`${npcs[npc.npcId].name}は探索を切り上げ、町へ引き返した。`);
     } else if (intent.action === "buy") {
-      npc = { ...npc, gold: npc.gold - 18, equipment: { ...npc.equipment, weapon: { id: "bamboo_sword", quantity: 1 } } };
-      events.push(`${npcs[npc.npcId].name}は武器を買った。`);
+      const price = priceFor(economy, "bamboo_sword");
+      npc = receiveItem({ ...npc, gold: npc.gold - price }, "bamboo_sword");
+      economy = { ...recordMarketTrade(economy, "bamboo_sword", "buy", 1), npcMarketGold: npcMarketCash(economy) + price };
+      events.push(`${npcs[npc.npcId].name}は竹刀を${price}文で買った。`);
     } else if (intent.action === "craft") {
       npc = {
         ...npc,
         gold: npc.gold - 12,
-        inventory: npc.inventory.map((item) => item.id === "iron_ore" ? { ...item, quantity: item.quantity - 2 } : item).filter((item) => item.quantity > 0),
+        inventory: removeMaterialQuantity(npc.inventory, "iron_ore", 2).map((item) => item.instanceId === npc.equipment.weapon?.instanceId && item.instanceId ? { ...item, enhancement: (item.enhancement ?? 0) + 1 } : item),
         equipment: { ...npc.equipment, weapon: { ...npc.equipment.weapon!, enhancement: (npc.equipment.weapon?.enhancement ?? 0) + 1 } }
       };
       events.push(`${npcs[npc.npcId].name}は武器を鍛えた。`);
     } else if (intent.action === "sell") {
-      const item = npc.inventory[0];
-      npc = item ? { ...npc, gold: npc.gold + Math.max(1, Math.floor(items[item.id].value * .55)), inventory: npc.inventory.slice(1) } : npc;
-      events.push(`${npcs[npc.npcId].name}は品を売った。`);
+      const item = sellableMaterial(npc, economy)!;
+      const price = npcSellPrice(economy, item.id);
+      npc = { ...npc, gold: npc.gold + price, inventory: removeInventoryItem(npc.inventory, item.id) };
+      economy = { ...recordMarketTrade(economy, item.id, "sell", 1), npcMarketGold: npcMarketCash(economy) - price };
+      events.push(`${npcs[npc.npcId].name}は${items[item.id].name}を1個、${price}文で売った。`);
     } else if (intent.action === "travel") {
-      const town = Object.values(towns).find((candidate) => candidate.id !== npc.townId && playableDungeonAt(candidate.id))
+      const town = auctionDestination(npc) ?? Object.values(towns).find((candidate) => candidate.id !== npc.townId && playableDungeonAt(candidate.id))
         ?? Object.values(towns).find((candidate) => candidate.id !== npc.townId)!;
       npc = { ...npc, townId: town.id, gold: npc.gold - town.travelCost };
       events.push(`${npcs[npc.npcId].name}は${town.name}へ移動した。`);
@@ -299,11 +301,14 @@ export const simulateNpcTick = (simulation: NpcSimulationState, economy: Economy
     next[index] = leveled.npc;
     events.push(...leveled.events);
   }
-  return { tick: simulation.tick + 1, npcs: next, events: [...simulation.events, ...events].slice(-24) };
+  return { simulation: { tick: simulation.tick + 1, npcs: next, events: [...simulation.events, ...events].slice(-24) }, economy };
 };
+
+export const simulateNpcTick = (simulation: NpcSimulationState, economy: EconomyState, random = Math.random): NpcSimulationState =>
+  simulateNpcEconomyTick(simulation, economy, random).simulation;
 
 export const simulateNpcTicks = (simulation: NpcSimulationState, economy: EconomyState, count: number, random = Math.random): NpcSimulationState => {
   let next = simulation;
-  for (let tick = 0; tick < count; tick += 1) next = simulateNpcTick(next, economy, random);
+  for (let tick = 0; tick < count; tick += 1) ({ simulation: next, economy } = simulateNpcEconomyTick(next, economy, random));
   return next;
 };

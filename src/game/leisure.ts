@@ -1,4 +1,3 @@
-import { items } from "../data/items";
 import type { AuctionListing, CasinoResult, GameState, InventoryItem, LogEntry } from "./types";
 import { addInventoryItem, findInventoryItem, isEquipmentItem, itemLabel, removeInventoryItem } from "./inventory";
 
@@ -10,17 +9,20 @@ export const placeCasinoBet = (state: GameState, stake: number, random = Math.ra
 };
 export const createAuctionListing = (state: GameState, selector: string, openingBid: number, closesAt: number): GameState => {
   const owned = findInventoryItem(state.inventory, selector);
-  if (!owned || openingBid < 1) return log(state, "出品できる品がありません。", "danger");
+  if (!owned || owned.quantity < 1 || !Number.isSafeInteger(openingBid) || openingBid < 1 || !Number.isSafeInteger(closesAt)) return log(state, "出品できる品がありません。", "danger");
+  if (isEquipmentItem(owned.id) && (!owned.instanceId || selector !== owned.instanceId || state.auctionListings.some((entry) => !entry.settled && entry.item.instanceId === owned.instanceId))) return log(state, "出品できる装備個体がありません。", "danger");
   if (isEquipmentItem(owned.id) && Object.values(state.equipment).some((equipped) => equipped?.instanceId === owned.instanceId)) return log(state, "装備中の品は出品できません。", "danger");
   const inventory = removeInventoryItem(state.inventory, owned.instanceId ?? owned.id);
-  const listing: AuctionListing = { id: `auction-${state.auctionListings.length + 1}`, sellerId: "player", item: { ...owned, quantity: 1 }, currentBid: openingBid, closesAt, settled: false };
+  let ordinal = state.auctionListings.length + 1;
+  while (state.auctionListings.some((entry) => entry.id === `auction-${ordinal}`)) ordinal++;
+  const listing: AuctionListing = { id: `auction-${ordinal}`, sellerId: "player", item: { ...owned, quantity: 1 }, currentBid: openingBid, closesAt, settled: false };
   return log({ ...state, inventory, auctionListings: [...state.auctionListings, listing] }, `「${itemLabel(owned)}」を競売へ出品した。`, "good");
 };
 export const bidOnAuction = (state: GameState, listingId: string, bid: number, bidderId = "player"): GameState => {
   const listing = state.auctionListings.find((entry) => entry.id === listingId);
   const refundedGold = listing?.bidderId === "player" ? listing.currentBid : 0;
   const availableGold = state.gold + refundedGold;
-  if (!listing || listing.settled || bidderId === listing.sellerId || bid <= listing.currentBid || (bidderId === "player" && availableGold < bid)) return log(state, "入札できません。", "danger");
+  if (!listing || listing.settled || bidderId === listing.sellerId || !Number.isSafeInteger(bid) || bid < listing.currentBid + (listing.bidderId ? 1 : 0) || (bidderId === "player" && availableGold < bid)) return log(state, "入札できません。", "danger");
   return log({
     ...state,
     gold: bidderId === "player" ? availableGold - bid : availableGold,
@@ -38,11 +40,11 @@ export const settleAuction = (state: GameState, listingId: string, now = Date.no
   let message: string;
   if (!listing.bidderId) {
     if (listing.sellerId === "player") inventory = addAuctionItem(inventory, listing.item);
-    message = `「${items[listing.item.id].name}」は落札されず、出品者へ戻った。`;
+    message = `「${itemLabel(listing.item)}」は落札されず、出品者へ戻った。`;
   } else {
     if (listing.sellerId === "player") gold += listing.currentBid;
     if (listing.bidderId === "player") inventory = addAuctionItem(inventory, listing.item);
-    message = `「${items[listing.item.id].name}」が${listing.currentBid}文で落札され、取引が成立した。`;
+    message = `「${itemLabel(listing.item)}」が${listing.currentBid}文で落札された。${listing.sellerId === "player" ? "売上を受け取った。" : listing.bidderId === "player" ? "品物を荷袋へ受け取った。" : ""}`;
   }
   return log({
     ...state,

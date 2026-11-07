@@ -9,6 +9,7 @@ import { stores } from "../data/stores";
 import { towns } from "../data/towns";
 import { effectiveSkillCost, effectiveStat, equippedEffects, expToNext, weaponPower } from "../game/engine";
 import { inventoryQuantity, recipeAvailability } from "../game/crafting";
+import { auctionDuration, canUseAuction, minimumBid } from "../game/auction";
 import type { DungeonRoom, GameState, ItemEffect, NpcSimulationState, RecipeDefinition, SkillCategory, StatKey } from "../game/types";
 
 export type ActiveTab = "journey" | "town" | "npc";
@@ -157,7 +158,24 @@ const forgePanel = (state: GameState) => {
   return `<section class="panel forge-panel"><div class="section-title"><div><p class="eyebrow">鍛冶場</p><h2>強化・製作・合成</h2></div><span>鉄鉱石 ${ore}</span></div><div class="forge-sections"><section class="forge-section"><p class="forge-step">一　強化</p><h3>装備中の武器を鍛える</h3><p>装備中の${weapon ? `${equipmentName(weapon)}（${instanceMark(weapon)}）` : "武器"}だけを強化。攻撃力 +2。</p><ul class="recipe-materials"><li class="${ore >= 2 ? "ready" : "missing"}"><span>鉄鉱石 ×2</span><small>所持 ${ore}</small></li><li class="${state.gold >= enhanceCost ? "ready" : "missing"}"><span>費用 ${enhanceCost}文</span><small>所持 ${state.gold}文</small></li></ul><button data-action="enhance" ${canEnhance ? "" : "disabled"}>${weapon ? `${equipmentName(weapon)}を強化` : "武器なし"}</button></section><section class="forge-section"><p class="forge-step">二　製作</p><h3>素材から装備を作る</h3><div class="recipe-grid">${craftCards}</div></section><section class="forge-section"><p class="forge-step">三　合成</p><h3>装備個体を鍛え直す</h3><div class="recipe-grid">${synthesisCards}</div></section></div>${recentEvent(state, true)}</section>`;
 };
 
-const townView = (state: GameState) => {
+const escapeAttribute = (value: string) => value.replace(/[&"<>]/g, (char) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" })[char]!);
+const auctionPanel = (state: GameState, tick: number) => {
+  if (!canUseAuction(state)) return "";
+  const actor = (id: string) => id === "player" ? "あなた" : npcs[id]?.name ?? "旅人";
+  const lots = state.auctionListings.filter((lot) => lot.townId === state.locationTownId);
+  const options = state.inventory.filter((item) => item.quantity > 0 && items[item.id] &&
+    (items[item.id].kind === "material" || (item.instanceId && !Object.values(state.equipment).some((gear) => gear?.instanceId === item.instanceId))));
+  const rows = lots.filter((lot) => !lot.settled).map((lot) => {
+    const equipment = items[lot.item.id].kind !== "material";
+    const min = minimumBid(lot);
+    const affordable = state.gold + (lot.bidderId === "player" ? lot.currentBid : 0) >= min;
+    return `<article class="auction-lot"><h3>${equipment ? equipmentName(lot.item) : items[lot.item.id].name}${equipment ? ` <small>${escapeAttribute(instanceMark(lot.item))}</small>` : ""}</h3><p>出品者：${actor(lot.sellerId)}／残り ${Math.max(0, lot.closesAt - tick)}刻</p><p>${lot.bidderId ? `最高入札：${actor(lot.bidderId)} ${lot.currentBid}文` : `開始価格：${lot.currentBid}文・入札なし`}</p>${lot.sellerId === "player" ? "<p>自分の出品には入札できません。</p>" : `<form data-auction-form="${escapeAttribute(lot.id)}"><label>入札額（文）<input name="price" type="number" inputmode="numeric" min="${min}" step="1" value="${min}" required></label><button ${affordable ? "" : "disabled"}>${affordable ? "入札する" : "所持金不足"}</button></form>`}</article>`;
+  }).join("");
+  const history = lots.filter((lot) => lot.settled).slice(-8).reverse().map((lot) => `<li>${items[lot.item.id].kind === "material" ? items[lot.item.id].name : equipmentName(lot.item)}：${lot.bidderId ? `${actor(lot.bidderId)}が${lot.currentBid}文で落札${lot.sellerId === "player" ? "・売上受領済み" : lot.bidderId === "player" ? "・荷袋へ受取済み" : ""}` : "入札なし・出品者へ返却済み"}</li>`).join("");
+  return `<section class="panel auction-panel"><p class="eyebrow">町の施設</p><h2>競売所</h2><p>現在 ${tick}刻。出品から${auctionDuration}刻で自動精算します。行動で進み、再読み込みや放置では進みません。入札金は預かり、上回られると返金されます。</p><button data-action="wait-auction">1刻待つ</button><form data-auction-form="list"><label>出品する品（1個）<select name="item" required><option value="">選択してください</option>${options.map((item) => `<option value="${escapeAttribute(item.instanceId ?? item.id)}">${item.instanceId ? `${equipmentName(item)}・${escapeAttribute(instanceMark(item))}` : `${items[item.id].name} ×${item.quantity}`}</option>`).join("")}</select></label><label>開始価格（文）<input name="price" type="number" inputmode="numeric" min="1" step="1" value="1" required></label><button ${options.length ? "" : "disabled"}>出品する</button></form><p>装備中の品は出品できません。</p><h3>開催中</h3>${rows || "<p>開催中の出品はありません。</p>"}<h3>精算履歴</h3><ul>${history || "<li>まだありません。</li>"}</ul>${recentEvent(state, true)}</section>`;
+};
+
+const townView = (state: GameState, tick: number) => {
   if (state.dungeon || state.battle) return `<div class="single-column"><section class="panel town-away"><p class="eyebrow">町・市場</p><h2>いまは町を離れている</h2><p>探索を終えて町へ戻ると、宿や店、鍛冶場を利用できる。</p>${state.battle ? `<button data-tab="journey">戦いへ戻る</button>` : `<button data-action="leave-dungeon">町へ戻る</button>`}</section>${recentEvent(state)}</div>`;
   const town = towns[state.locationTownId];
   const townStores = Object.values(stores).filter((store) => store.townId === state.locationTownId);
@@ -175,7 +193,7 @@ const townView = (state: GameState) => {
   const travel = `<section class="panel"><p class="eyebrow">町への移動</p><h2>街道</h2><div class="inventory">${Object.values(towns).map((candidate) => `<button class="item ${candidate.id === state.locationTownId ? "selected" : ""}" data-town="${candidate.id}" ${candidate.id === state.locationTownId ? "disabled" : ""}><span>${candidate.name}</span><small>${candidate.travelCost}文　${candidate.services.join("・")}</small></button>`).join("")}</div></section>`;
   const job = jobs[state.jobId];
   const career = `<section class="panel"><p class="eyebrow">職業</p><h2>${job.name}</h2><p>${job.description}</p><div class="inventory">${Object.values(jobs).filter((candidate) => candidate.id !== state.jobId).map((candidate) => `<button class="item" data-job="${candidate.id}"><span>${candidate.name}</span><small>Lv.${candidate.changeRequirement.level} / ${candidate.changeRequirement.gold}文　${candidate.description}</small></button>`).join("")}</div></section>`;
-  return `<div class="town-heading"><div><p class="eyebrow">現在地</p><h2>${town.name}</h2><p>${town.description}</p></div><button data-action="rest">宿で休む</button></div>${recentEvent(state)}<div class="town-grid"><div class="main-column">${storesHtml}${town.services.includes("blacksmith") ? forgePanel(state) : ""}</div><aside>${travel}${career}<section class="panel future-services"><p class="eyebrow">町の噂</p><h2>これからの賑わい</h2><p>競売と賭場は準備中。町ごとの施設として、旅の進行を壊さず開かれる予定です。</p></section></aside></div>`;
+  return `<div class="town-heading"><div><p class="eyebrow">現在地</p><h2>${town.name}</h2><p>${town.description}</p></div><button data-action="rest">宿で休む</button></div>${recentEvent(state)}<div class="town-grid"><div class="main-column">${auctionPanel(state, tick)}${storesHtml}${town.services.includes("blacksmith") ? forgePanel(state) : ""}</div><aside>${travel}${career}<section class="panel future-services"><p class="eyebrow">町の噂</p><h2>これからの賑わい</h2><p>競売は霧凪の港で利用できます。賭場は準備中です。</p></section></aside></div>`;
 };
 
 const npcView = (simulation: NpcSimulationState) => {
@@ -196,6 +214,6 @@ export const renderApp = (state: GameState, activeTab: ActiveTab, showCompletion
   const town = towns[state.locationTownId];
   const job = jobs[state.jobId];
   const tabs: Array<{ id: ActiveTab; label: string }> = [{ id: "journey", label: "旅支度" }, { id: "town", label: "町・市場" }, { id: "npc", label: "NPCの世界" }];
-  const content = activeTab === "journey" ? journeyView(state, showCompletion) : activeTab === "town" ? townView(state) : npcView(simulation);
+  const content = activeTab === "journey" ? journeyView(state, showCompletion) : activeTab === "town" ? townView(state, simulation.tick) : npcView(simulation);
   return `<div class="shell"><header><div><p class="logo-mark">妖ノ国 ONLINE</p><h1>はじまりの旅</h1></div><div class="currency">◈ ${state.gold} 文</div></header><p class="play-mode">端末ごとのひとり旅版。セーブはこのブラウザーに保存されます。オンライン共有ワールドではありません。</p><section class="hero"><div class="portrait">旅</div><div class="identity"><p class="eyebrow">${state.dungeon ? dungeons[state.dungeon.dungeonId].name : town.name}の${job.name}</p><h2>${state.name} <span>Lv.${state.level}</span></h2><div class="meters"><label>HP <strong>${state.hp}/${state.maxHp}</strong>${bar(state.hp, state.maxHp, "hp")}</label><label>MP <strong>${state.mp}/${state.maxMp}</strong>${bar(state.mp, state.maxMp, "exp")}</label><label>行動力 <strong>${state.actionPoints}/${state.maxActionPoints}</strong>${bar(state.actionPoints, state.maxActionPoints, "ap")}</label><label>経験 <strong>${state.exp}/${expToNext(state.level)}</strong>${bar(state.exp, expToNext(state.level), "exp")}</label></div></div></section><nav class="tabs" role="tablist" aria-label="主な画面">${tabs.map((tab) => `<button role="tab" aria-selected="${activeTab === tab.id}" class="tab ${activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">${tab.label}</button>`).join("")}</nav><main class="tab-content" id="${activeTab}-panel" role="tabpanel">${content}</main>${activeTab !== "npc" ? logPanel(state) : ""}<footer>探索 ${state.explored} 回　・　討伐 ${state.defeated} 体　・　自動保存 <span>NPCはプレイヤーを襲撃しない設計です</span></footer></div>`;
 };
